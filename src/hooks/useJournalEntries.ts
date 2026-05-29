@@ -1,0 +1,307 @@
+import { useState, useEffect, useCallback, useRef } from 'react'
+import { supabase, isOnline } from '../lib/supabase'
+import { getJournalEntries, saveJournalEntry, deleteJournalEntryById, generateEntryNumber } from '../lib/journalEntries'
+import { buildDemoAccounts, buildDemoJournalEntries } from '../lib/demo'
+import { useAuth } from '../contexts/AuthContext'
+import type { JournalEntry, JournalEntryItem, JournalEntryStatus } from '../types'
+
+let demoEntries: JournalEntry[] | null = null
+
+export function useJournalEntries() {
+  const { user } = useAuth()
+  const [entries, setEntries] = useState<JournalEntry[]>([])
+  const [loading, setLoading] = useState(true)
+  const nextSeq = useRef(1)
+
+  const fetchEntries = useCallback(async () => {
+    setLoading(true)
+    let fromDb = false
+    if (isOnline() && supabase) {
+      const { data, error } = await supabase
+        .from('journal_entries')
+        .select('*, items:journal_entry_items(*)')
+        .order('posting_date', { ascending: false })
+        .order('created_at', { ascending: false })
+      if (error) {
+        console.error('Failed to fetch journal entries:', error.message)
+      } else if (data && data.length > 0) {
+        const mapped: JournalEntry[] = data.map((r: any) => ({
+          id: r.id,
+          entry_number: r.entry_number,
+          posting_date: r.posting_date,
+          description: r.description,
+          total_debit: Number(r.total_debit),
+          total_credit: Number(r.total_credit),
+          status: r.status,
+          period_id: r.period_id ?? null,
+          created_by: r.created_by ?? null,
+          created_by_name: r.created_by_name ?? null,
+          created_at: r.created_at,
+          updated_at: r.updated_at,
+          submitted_by: r.submitted_by ?? null,
+          submitted_by_name: r.submitted_by_name ?? null,
+          submitted_at: r.submitted_at ?? null,
+          approved_by: r.approved_by ?? null,
+          approved_by_name: r.approved_by_name ?? null,
+          approved_at: r.approved_at ?? null,
+          posted_by: r.posted_by ?? null,
+          posted_by_name: r.posted_by_name ?? null,
+          posted_at: r.posted_at ?? null,
+          items: (r.items ?? []).map((item: any) => ({
+            id: item.id,
+            journal_entry_id: item.journal_entry_id,
+            account_id: item.account_id,
+            debit: Number(item.debit),
+            credit: Number(item.credit),
+            description: item.description,
+          })),
+        }))
+        setEntries(mapped)
+        demoEntries = mapped
+        nextSeq.current = mapped.length + 1
+        fromDb = true
+      }
+    }
+    if (!fromDb) {
+      if (!demoEntries) {
+        const stored = getJournalEntries()
+        if (stored.length > 0) {
+          demoEntries = stored
+        } else {
+          const accounts = buildDemoAccounts()
+          demoEntries = buildDemoJournalEntries(accounts)
+        }
+      }
+      setEntries([...demoEntries])
+      nextSeq.current = demoEntries.length + 1
+    }
+    setLoading(false)
+  }, [])
+
+  useEffect(() => {
+    fetchEntries()
+  }, [fetchEntries])
+
+  const persistToDb = useCallback(async (entry: JournalEntry, items: JournalEntryItem[]) => {
+    if (!isOnline() || !supabase) return
+    const { error } = await supabase.from('journal_entries').upsert({
+      id: entry.id,
+      entry_number: entry.entry_number,
+      posting_date: entry.posting_date,
+      description: entry.description,
+      total_debit: entry.total_debit,
+      total_credit: entry.total_credit,
+      status: entry.status,
+      period_id: entry.period_id,
+      created_by: entry.created_by,
+      created_by_name: entry.created_by_name,
+      submitted_by: entry.submitted_by,
+      submitted_by_name: entry.submitted_by_name,
+      submitted_at: entry.submitted_at,
+      approved_by: entry.approved_by,
+      approved_by_name: entry.approved_by_name,
+      approved_at: entry.approved_at,
+      posted_by: entry.posted_by,
+      posted_by_name: entry.posted_by_name,
+      posted_at: entry.posted_at,
+    })
+    if (error) throw new Error(error.message)
+
+    const { error: delError } = await supabase
+      .from('journal_entry_items')
+      .delete()
+      .eq('journal_entry_id', entry.id)
+    if (delError) throw new Error(delError.message)
+
+    if (items.length > 0) {
+      const { error: insError } = await supabase.from('journal_entry_items').insert(
+        items.map((item) => ({
+          journal_entry_id: entry.id,
+          account_id: item.account_id,
+          debit: item.debit,
+          credit: item.credit,
+          description: item.description,
+        }))
+      )
+      if (insError) throw new Error(insError.message)
+    }
+  }, [])
+
+  const syncAndRefresh = useCallback(async (entry: JournalEntry, items?: JournalEntryItem[]) => {
+    saveJournalEntry(entry)
+    demoEntries = (demoEntries ?? []).map((e) => (e.id === entry.id ? entry : e))
+    setEntries([...demoEntries])
+    if (items) {
+      await persistToDb(entry, items)
+    }
+  }, [persistToDb])
+
+  const createEntry = useCallback(async (
+    header: Omit<JournalEntry, 'id' | 'entry_number' | 'status' | 'created_at' | 'updated_at' | 'created_by' | 'created_by_name' | 'submitted_by' | 'submitted_by_name' | 'submitted_at' | 'approved_by' | 'approved_by_name' | 'approved_at' | 'posted_by' | 'posted_by_name' | 'posted_at'> & { period_id?: string | null },
+    items: Omit<JournalEntryItem, 'id' | 'journal_entry_id' | 'created_at'>[]
+  ) => {
+    const seq = nextSeq.current++
+    const now = new Date().toISOString()
+    const entry: JournalEntry = {
+      id: crypto.randomUUID(),
+      entry_number: generateEntryNumber(seq),
+      ...header,
+      status: 'draft',
+      created_at: now,
+      updated_at: now,
+      created_by: user?.id ?? null,
+      created_by_name: user?.name ?? null,
+      submitted_by: null,
+      submitted_by_name: null,
+      submitted_at: null,
+      approved_by: null,
+      approved_by_name: null,
+      approved_at: null,
+      posted_by: null,
+      posted_by_name: null,
+      posted_at: null,
+    }
+    const entryItems: JournalEntryItem[] = items.map((item) => ({
+      id: crypto.randomUUID(),
+      journal_entry_id: entry.id,
+      ...item,
+    }))
+    entry.items = entryItems
+    saveJournalEntry(entry)
+    demoEntries = [entry, ...(demoEntries ?? [])]
+    setEntries([...demoEntries])
+    await persistToDb(entry, entryItems)
+    return entry
+  }, [persistToDb, user])
+
+  const updateEntry = useCallback(async (
+    id: string,
+    header: Omit<JournalEntry, 'id' | 'entry_number' | 'status' | 'created_at' | 'updated_at' | 'created_by' | 'created_by_name' | 'submitted_by' | 'submitted_by_name' | 'submitted_at' | 'approved_by' | 'approved_by_name' | 'approved_at' | 'posted_by' | 'posted_by_name' | 'posted_at'> & { period_id?: string | null },
+    items: Omit<JournalEntryItem, 'id' | 'journal_entry_id' | 'created_at'>[]
+  ) => {
+    const existing = (demoEntries ?? []).find((e) => e.id === id)
+    if (!existing) throw new Error('Journal entry not found')
+    if (existing.status !== 'draft') throw new Error('Only draft entries can be edited')
+    const now = new Date().toISOString()
+    const updated: JournalEntry = {
+      ...existing,
+      ...header,
+      updated_at: now,
+    }
+    const updatedItems: JournalEntryItem[] = items.map((item) => ({
+      id: crypto.randomUUID(),
+      journal_entry_id: updated.id,
+      ...item,
+    }))
+    updated.items = updatedItems
+    await syncAndRefresh(updated, updatedItems)
+    return updated
+  }, [syncAndRefresh])
+
+  const transitionStatus = useCallback(async (
+    id: string,
+    newStatus: JournalEntryStatus,
+    auditField: 'submitted' | 'approved' | 'posted',
+  ) => {
+    const existing = (demoEntries ?? []).find((e) => e.id === id)
+    if (!existing) throw new Error('Journal entry not found')
+    const now = new Date().toISOString()
+    const updated: JournalEntry = {
+      ...existing,
+      status: newStatus,
+      updated_at: now,
+      [`${auditField}_by`]: user?.id ?? null,
+      [`${auditField}_by_name`]: user?.name ?? null,
+      [`${auditField}_at`]: now,
+    }
+    await syncAndRefresh(updated, existing.items)
+    return updated
+  }, [syncAndRefresh, user])
+
+  const submitEntry = useCallback(async (id: string) => {
+    const existing = (demoEntries ?? []).find((e) => e.id === id)
+    if (!existing) throw new Error('Journal entry not found')
+    if (existing.status !== 'draft') throw new Error('Only draft entries can be submitted')
+    return transitionStatus(id, 'submitted', 'submitted')
+  }, [transitionStatus])
+
+  const approveEntry = useCallback(async (id: string) => {
+    const existing = (demoEntries ?? []).find((e) => e.id === id)
+    if (!existing) throw new Error('Journal entry not found')
+    if (existing.status !== 'submitted') throw new Error('Only submitted entries can be approved')
+    if (!user?.role || !['Superuser', 'Manager'].includes(user.role)) {
+      throw new Error('Only managers can approve journal entries')
+    }
+    return transitionStatus(id, 'approved', 'approved')
+  }, [transitionStatus, user])
+
+  const postEntry = useCallback(async (id: string) => {
+    const existing = (demoEntries ?? []).find((e) => e.id === id)
+    if (!existing) throw new Error('Journal entry not found')
+    if (existing.status !== 'approved') throw new Error('Only approved entries can be posted')
+    if (!user?.role || !['Superuser', 'Manager'].includes(user.role)) {
+      throw new Error('Only managers can post journal entries to ledger')
+    }
+
+    const items = existing.items ?? []
+    const now = new Date().toISOString()
+    const updated: JournalEntry = {
+      ...existing,
+      status: 'posted',
+      updated_at: now,
+      posted_by: user?.id ?? null,
+      posted_by_name: user?.name ?? null,
+      posted_at: now,
+    }
+
+    if (isOnline() && supabase) {
+      const { error: leError } = await supabase.from('ledger_entries').insert(
+        items.map((item) => ({
+          journal_entry_id: updated.id,
+          account_id: item.account_id,
+          posting_date: existing.posting_date,
+          debit: item.debit,
+          credit: item.credit,
+          description: item.description || existing.description,
+          period_id: existing.period_id,
+        }))
+      )
+      if (leError) throw new Error(leError.message)
+    }
+
+    await syncAndRefresh(updated, items)
+    return updated
+  }, [syncAndRefresh, user])
+
+  const cancelEntry = useCallback(async (id: string) => {
+    const existing = (demoEntries ?? []).find((e) => e.id === id)
+    if (!existing) throw new Error('Journal entry not found')
+    if (existing.status === 'posted') throw new Error('Posted entries cannot be cancelled')
+    if (existing.status === 'cancelled') throw new Error('Entry is already cancelled')
+    const now = new Date().toISOString()
+    const updated: JournalEntry = { ...existing, status: 'cancelled', updated_at: now }
+    await syncAndRefresh(updated, existing.items)
+    return updated
+  }, [syncAndRefresh])
+
+  const deleteEntry = useCallback(async (id: string) => {
+    const existing = (demoEntries ?? []).find((e) => e.id === id)
+    if (existing && existing.status !== 'draft') throw new Error('Only draft entries can be deleted')
+    deleteJournalEntryById(id)
+    demoEntries = (demoEntries ?? []).filter((e) => e.id !== id)
+    setEntries([...demoEntries])
+    if (isOnline() && supabase) {
+      await supabase.from('journal_entry_items').delete().eq('journal_entry_id', id)
+      await supabase.from('journal_entries').delete().eq('id', id)
+    }
+  }, [])
+
+  const refetch = useCallback(() => {
+    fetchEntries()
+  }, [fetchEntries])
+
+  return {
+    entries, loading, refetch,
+    createEntry, updateEntry, submitEntry, approveEntry, postEntry, cancelEntry, deleteEntry,
+  }
+}
