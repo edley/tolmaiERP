@@ -43,10 +43,12 @@ export function LookupField({
 }: LookupFieldProps) {
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState('')
+  const [highlightedIdx, setHighlightedIdx] = useState(-1)
   const [panelStyle, setPanelStyle] = useState<React.CSSProperties>({})
   const triggerRef = useRef<HTMLDivElement>(null)
   const panelRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
+  const listRef = useRef<HTMLDivElement>(null)
 
   const selected = options.find((o) => o.id === value)
 
@@ -76,6 +78,7 @@ export function LookupField({
       left: rect.left,
       width: Math.max(rect.width, 360),
     })
+    setHighlightedIdx(-1)
     setOpen(true)
   }, [])
 
@@ -88,6 +91,7 @@ export function LookupField({
       setTimeout(() => inputRef.current?.focus(), 50)
     } else {
       setSearch('')
+      setHighlightedIdx(-1)
     }
   }, [open])
 
@@ -117,10 +121,36 @@ export function LookupField({
     return () => document.removeEventListener('mousedown', handler)
   }, [open, closeDropdown])
 
+  useEffect(() => {
+    setHighlightedIdx(-1)
+  }, [search])
+
   const handleSelect = (id: string) => {
     onChange(id)
     closeDropdown()
   }
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault()
+      setHighlightedIdx((prev) => (prev < filtered.length - 1 ? prev + 1 : 0))
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault()
+      setHighlightedIdx((prev) => (prev > 0 ? prev - 1 : filtered.length - 1))
+    } else if (e.key === 'Enter' && highlightedIdx >= 0) {
+      e.preventDefault()
+      handleSelect(filtered[highlightedIdx].id)
+    } else if (e.key === 'Escape') {
+      e.preventDefault()
+      closeDropdown()
+    }
+  }
+
+  useEffect(() => {
+    if (highlightedIdx < 0 || !listRef.current) return
+    const item = listRef.current.children[highlightedIdx] as HTMLElement | undefined
+    item?.scrollIntoView({ block: 'nearest' })
+  }, [highlightedIdx])
 
   return (
     <div ref={triggerRef}>
@@ -177,22 +207,28 @@ export function LookupField({
                 type="text"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
+                onKeyDown={handleKeyDown}
                 className="w-full h-8 pl-8 pr-3 text-sm border border-[#dddbda] rounded text-[#16325c] focus:border-[#0070d2] focus:ring-1 focus:ring-[#0070d2] focus:outline-none"
                 placeholder={searchPlaceholder}
               />
             </div>
           </div>
-          <div className="overflow-y-auto" style={{ maxHeight: '50vh' }}>
+          <div ref={listRef} className="overflow-y-auto" style={{ maxHeight: '50vh' }}>
             {filtered.length === 0 && (
               <div className="px-3 py-4 text-sm text-slate-400 text-center">{emptyMessage}</div>
             )}
-            {filtered.map((option) => (
+            {filtered.map((option, idx) => (
               <button
                 key={option.id}
                 type="button"
                 onClick={() => handleSelect(option.id)}
-                className={`w-full text-left px-3 py-2 text-sm hover:bg-[#e8f4fe] transition-colors flex items-center justify-between ${
-                  option.id === value ? 'bg-[#e8f4fe] font-medium' : ''
+                onMouseEnter={() => setHighlightedIdx(idx)}
+                className={`w-full text-left px-3 py-2 text-sm transition-colors flex items-center justify-between ${
+                  idx === highlightedIdx
+                    ? 'bg-[#0070d2] text-white'
+                    : option.id === value
+                    ? 'bg-[#e8f4fe] font-medium text-[#16325c]'
+                    : 'text-[#16325c] hover:bg-[#e8f4fe]'
                 }`}
               >
                 <div className="min-w-0">
