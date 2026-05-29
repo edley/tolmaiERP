@@ -56,12 +56,11 @@ export function DataTable<T extends object>({
       <div
         ref={tableRef}
         className="overflow-auto"
-        style={
-          {
-            scrollbarColor: '#c9c7c5 #f3f3f3',
-            scrollbarWidth: 'auto',
-          } as React.CSSProperties
-        }
+        style={{
+          maxHeight: 'calc(100vh - 280px)',
+          scrollbarColor: '#c9c7c5 #f3f3f3',
+          scrollbarWidth: 'auto',
+        }}
       >
         <table className="min-w-full divide-y divide-slate-200" style={{ tableLayout: 'auto' }}>
           <thead className="bg-slate-50">
