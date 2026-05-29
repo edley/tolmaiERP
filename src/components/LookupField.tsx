@@ -182,7 +182,7 @@ export function LookupField({
               />
             </div>
           </div>
-          <div className="max-h-80 overflow-y-auto">
+          <div className="overflow-y-auto" style={{ maxHeight: '50vh' }}>
             {filtered.length === 0 && (
               <div className="px-3 py-4 text-sm text-slate-400 text-center">{emptyMessage}</div>
             )}
