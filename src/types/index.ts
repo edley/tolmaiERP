@@ -6,6 +6,7 @@ export interface Account {
   parent_id: string | null
   is_group: boolean
   is_cash_account: boolean
+  allocation_allow: boolean
   description: string | null
   created_at: string
   updated_at: string
@@ -41,6 +42,11 @@ export interface JournalEntry {
 
 export type JournalEntryStatus = 'draft' | 'submitted' | 'approved' | 'posted' | 'cancelled'
 
+export interface JournalEntryItemAllocation {
+  allocation_code: string
+  amount: number
+}
+
 export interface JournalEntryItem {
   id: string
   journal_entry_id: string
@@ -49,6 +55,7 @@ export interface JournalEntryItem {
   credit: number
   description: string | null
   account?: Account
+  allocations?: JournalEntryItemAllocation[]
 }
 
 export interface LedgerEntry {
@@ -87,4 +94,28 @@ export interface AccountingPeriod {
   start_date: string
   end_date: string
   status: 'open' | 'closed'
+}
+
+export interface AllocationMapping {
+  id: string
+  gl_account_id: string | null
+  gl_code: string | null
+  allocation_code: string
+  description: string | null
+  active: boolean
+  created_at: string
+  updated_at: string
+  gl_account?: Account
+}
+
+export interface TrialBalanceRow {
+  account_id: string
+  account_code: string | null
+  account_name: string
+  account_type: AccountType
+  is_group: boolean
+  parent_id: string | null
+  debit: number
+  credit: number
+  balance: number
 }

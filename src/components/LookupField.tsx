@@ -97,7 +97,10 @@ export function LookupField({
 
   useEffect(() => {
     if (!open) return
-    const handler = () => closeDropdown()
+    const handler = (e: Event) => {
+      if (panelRef.current && panelRef.current.contains(e.target as Node)) return
+      closeDropdown()
+    }
     window.addEventListener('scroll', handler, true)
     window.addEventListener('resize', handler)
     return () => {
@@ -133,15 +136,21 @@ export function LookupField({
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'ArrowDown') {
       e.preventDefault()
+      e.stopPropagation()
       setHighlightedIdx((prev) => (prev < filtered.length - 1 ? prev + 1 : 0))
     } else if (e.key === 'ArrowUp') {
       e.preventDefault()
+      e.stopPropagation()
       setHighlightedIdx((prev) => (prev > 0 ? prev - 1 : filtered.length - 1))
-    } else if (e.key === 'Enter' && highlightedIdx >= 0) {
+    } else if (e.key === 'Enter') {
       e.preventDefault()
-      handleSelect(filtered[highlightedIdx].id)
+      e.stopPropagation()
+      if (highlightedIdx >= 0) {
+        handleSelect(filtered[highlightedIdx].id)
+      }
     } else if (e.key === 'Escape') {
       e.preventDefault()
+      e.stopPropagation()
       closeDropdown()
     }
   }
@@ -213,7 +222,7 @@ export function LookupField({
               />
             </div>
           </div>
-          <div ref={listRef} className="overflow-y-auto" style={{ maxHeight: '50vh' }}>
+          <div ref={listRef} className="overflow-y-auto lookup-scrollbar" style={{ maxHeight: '50vh', scrollbarWidth: 'thin', scrollbarColor: '#c9c7c5 #f3f3f3', overflowY: 'scroll' }}>
             {filtered.length === 0 && (
               <div className="px-3 py-4 text-sm text-slate-400 text-center">{emptyMessage}</div>
             )}

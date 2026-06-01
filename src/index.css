@@ -14,3 +14,19 @@
 [type="number"] {
   -moz-appearance: textfield;
 }
+
+.lookup-scrollbar::-webkit-scrollbar {
+  width: 7px;
+}
+.lookup-scrollbar::-webkit-scrollbar-track {
+  background: #f3f3f3;
+  border-radius: 3.5px;
+}
+.lookup-scrollbar::-webkit-scrollbar-thumb {
+  background: #c9c7c5;
+  border-radius: 3.5px;
+  min-height: 40px;
+}
+.lookup-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #b0aeac;
+}

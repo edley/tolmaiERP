@@ -7,12 +7,16 @@ import { ChartOfAccounts } from './pages/ChartOfAccounts'
 import { JournalEntries } from './pages/JournalEntries'
 import { GeneralLedger } from './pages/GeneralLedger'
 import { Payments } from './pages/Payments'
+import { Receipts } from './pages/Receipts'
 import { FinancialReports } from './pages/FinancialReports'
 import { Login } from './pages/Login'
 import { Signup } from './pages/Signup'
 import { Settings } from './pages/Settings'
 import { UserManagement } from './pages/UserManagement'
 import { AccountingPeriods } from './pages/AccountingPeriods'
+import { TrialBalance } from './pages/TrialBalance'
+import { AllocationMappings } from './pages/AllocationMappings'
+import { AllocationReportAnalysis } from './pages/AllocationReportAnalysis/AllocationReportAnalysis'
 
 function App() {
   return (
@@ -27,8 +31,12 @@ function App() {
             <Route path="/journal-entries" element={<JournalEntries />} />
             <Route path="/general-ledger" element={<GeneralLedger />} />
             <Route path="/payments" element={<Payments />} />
+            <Route path="/receipts" element={<Receipts />} />
+            <Route path="/trial-balance" element={<TrialBalance />} />
+            <Route path="/allocation-report-analysis" element={<AllocationReportAnalysis />} />
             <Route path="/reports" element={<FinancialReports />} />
             <Route path="/settings" element={<Settings />} />
+            <Route path="/allocation-mappings" element={<AllocationMappings />} />
             <Route path="/accounting-periods" element={<AccountingPeriods />} />
             <Route path="/usermgmt" element={<UserManagement />} />
           </Route>

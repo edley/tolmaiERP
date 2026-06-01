@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { NavLink } from 'react-router-dom'
 import {
   LayoutDashboard,
@@ -6,30 +7,91 @@ import {
   Receipt,
   CreditCard,
   BarChart3,
+  Scale,
   Calendar,
   Shield,
+  ArrowDownToLine,
+  Settings,
+  ChevronDown,
+  ChevronRight,
 } from 'lucide-react'
 import { useRBAC } from '../../hooks/useRBAC'
-import { ALL_MENUS } from '../../lib/menus'
+import { ALL_MENUS, isGroup } from '../../lib/menus'
+import type { MenuGroup } from '../../lib/menus'
 
 const ICON_MAP: Record<string, typeof LayoutDashboard> = {
   dashboard: LayoutDashboard,
   accountant: BookOpen,
   journal: FileText,
   ledger: Receipt,
+  trialbalance: Scale,
   payments: CreditCard,
+  receipts: ArrowDownToLine,
   reports: BarChart3,
+  settings: Settings,
   accountingperiods: Calendar,
+  allocationmappings: Settings,
   usermgmt: Shield,
+}
+
+function SidebarGroup({ group }: { group: MenuGroup }) {
+  const [expanded, setExpanded] = useState(true)
+  const { canAccessMenu } = useRBAC()
+  const Icon = ICON_MAP[group.key] || Settings
+
+  const visibleChildren = group.children.filter((child) => canAccessMenu(child.key))
+
+  if (visibleChildren.length === 0) return null
+
+  return (
+    <div>
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="flex items-center justify-between w-full px-5 py-2.5 text-xs font-bold text-[#514f4d] uppercase tracking-wider hover:bg-[#f3f3f3] transition-colors"
+      >
+        <div className="flex items-center gap-3">
+          <Icon className="w-4 h-4 shrink-0" />
+          <span>{group.label}</span>
+        </div>
+        {expanded ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
+      </button>
+      {expanded && (
+        <div>
+          {visibleChildren.map((child) => {
+            const ChildIcon = ICON_MAP[child.key] || LayoutDashboard
+            return (
+              <NavLink
+                key={child.key}
+                to={child.route}
+                className={({ isActive }) =>
+                  `relative flex items-center gap-3 px-5 py-2 pl-12 text-sm font-medium transition-colors ${
+                    isActive
+                      ? 'text-[#0070d2] bg-[#e8f4fe] border-l-3 border-[#0070d2]'
+                      : 'text-[#16325c] hover:bg-[#f3f3f3] border-l-3 border-transparent'
+                  }`
+                }
+              >
+                <ChildIcon className="w-4 h-4 shrink-0" />
+                {child.label}
+              </NavLink>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
 }
 
 export function Sidebar() {
   const { canAccessMenu, isSuperuser } = useRBAC()
 
-  const visibleMenus = ALL_MENUS.filter((m) => {
-    if (m.key === 'usermgmt') return isSuperuser
-    if (m.key === 'settings') return false // settings is in header, not sidebar
-    return canAccessMenu(m.key)
+  const visibleItems = ALL_MENUS.filter((item) => {
+    if (isGroup(item)) {
+      const visible = item.children.some((child) => canAccessMenu(child.key))
+      return visible
+    }
+    if (item.key === 'usermgmt') return isSuperuser
+    return canAccessMenu(item.key)
   })
 
   return (
@@ -48,13 +110,16 @@ export function Sidebar() {
         </NavLink>
       </div>
       <nav className="flex-1 py-3 min-h-0">
-        {visibleMenus.map((menu) => {
-          const Icon = ICON_MAP[menu.key] || LayoutDashboard
+        {visibleItems.map((item) => {
+          if (isGroup(item)) {
+            return <SidebarGroup key={item.key} group={item} />
+          }
+          const Icon = ICON_MAP[item.key] || LayoutDashboard
           return (
             <NavLink
-              key={menu.key}
-              to={menu.route}
-              end={menu.route === '/'}
+              key={item.key}
+              to={item.route}
+              end={item.route === '/'}
               className={({ isActive }) =>
                 `relative flex items-center gap-3 px-5 py-2.5 text-sm font-medium transition-colors ${
                   isActive
@@ -64,7 +129,7 @@ export function Sidebar() {
               }
             >
               <Icon className="w-4 h-4 shrink-0" />
-              {menu.label}
+              {item.label}
             </NavLink>
           )
         })}

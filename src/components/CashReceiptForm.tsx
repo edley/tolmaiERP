@@ -1,16 +1,15 @@
 import { useState, useRef, useMemo } from 'react'
 import { Plus, Trash2, Split } from 'lucide-react'
 import { useAccounts } from '../hooks/useAccounts'
-import { usePayments } from '../hooks/usePayments'
+import { useReceipts } from '../hooks/useReceipts'
 import { getPaymentModes } from '../lib/paymentModes'
-import { generatePaymentNumber } from '../lib/payments'
+import { generateReceiptNumber } from '../lib/receipts'
 import { LookupField } from './LookupField'
-import { Modal } from './Modal'
 import { EditableNumber } from './EditableNumber'
+import { Modal } from './Modal'
 import { getMappings } from '../lib/allocationMappings'
-
 import { usePeriod } from '../contexts/PeriodContext'
-import type { Payment } from '../lib/payments'
+import type { Receipt } from '../lib/receipts'
 
 interface Line {
   id: number
@@ -19,10 +18,10 @@ interface Line {
   allocations: { code: string; amount: string }[]
 }
 
-interface CashTransactionFormProps {
+interface CashReceiptFormProps {
   onClose: () => void
   onSuccess?: () => void
-  payment?: Payment
+  receipt?: Receipt
 }
 
 const STATUS_BADGE: Record<string, { bg: string; text: string; border: string; dot: string }> = {
@@ -33,37 +32,37 @@ const STATUS_BADGE: Record<string, { bg: string; text: string; border: string; d
   cancelled: { bg: '#fef0f0', text: '#c23934', border: '#c23934', dot: '#c23934' },
 }
 
-export function CashTransactionForm({ onClose, onSuccess, payment }: CashTransactionFormProps) {
+export function CashReceiptForm({ onClose, onSuccess, receipt }: CashReceiptFormProps) {
   const { accounts } = useAccounts()
-  const { payments, createPayment, updatePayment } = usePayments()
+  const { receipts, createReceipt, updateReceipt } = useReceipts()
   const { periods, currentPeriod } = usePeriod()
 
-  const isEditing = !!payment
-  const readonly = isEditing && payment && payment.status !== 'draft'
+  const isEditing = !!receipt
+  const readonly = isEditing && receipt && receipt.status !== 'draft'
 
   const existingLines: Line[] = useMemo(() =>
-    (payment?.lines ?? []).map((l, i) => ({
+    (receipt?.lines ?? []).map((l, i) => ({
       id: i + 1,
       gl_account_id: l.gl_account_id,
       amount: String(l.amount),
       allocations: (l.allocations ?? []).map((a) => ({ code: a.allocation_code, amount: String(a.amount) })),
     })),
-    [payment]
+    [receipt]
   )
 
-  const [selectedPeriodId, setSelectedPeriodId] = useState(payment?.period_id ?? currentPeriod?.id ?? '')
-  const [postingDate, setPostingDate] = useState(payment?.date ?? new Date().toISOString().split('T')[0])
-  const [voucherAmount, setVoucherAmount] = useState(payment ? String(payment.voucher_amount) : '')
-  const [modeOfPaymentId, setModeOfPaymentId] = useState(payment?.mode_of_payment_id ?? '')
-  const [paidTo, setPaidTo] = useState(payment?.paid_to ?? '')
-  const [invoiceNo, setInvoiceNo] = useState(payment?.invoice_no ?? '')
-  const [description, setDescription] = useState(payment?.description ?? '')
+  const [selectedPeriodId, setSelectedPeriodId] = useState(receipt?.period_id ?? currentPeriod?.id ?? '')
+  const [postingDate, setPostingDate] = useState(receipt?.date ?? new Date().toISOString().split('T')[0])
+  const [voucherAmount, setVoucherAmount] = useState(receipt ? String(receipt.voucher_amount) : '')
+  const [modeOfPaymentId, setModeOfPaymentId] = useState(receipt?.mode_of_payment_id ?? '')
+  const [receivedFrom, setReceivedFrom] = useState(receipt?.received_from ?? '')
+  const [invoiceNo, setInvoiceNo] = useState(receipt?.invoice_no ?? '')
+  const [description, setDescription] = useState(receipt?.description ?? '')
 
   const paymentModes = useMemo(() => getPaymentModes(), [])
 
   const selectedMode = paymentModes.find((m) => m.id === modeOfPaymentId)
 
-  const debitAccounts = accounts
+  const creditAccounts = accounts
 
   const defaultLines: Line[] = Array.from({ length: 3 }, (_, i) => ({
     id: i + 1, gl_account_id: '', amount: '', allocations: [],
@@ -141,12 +140,10 @@ export function CashTransactionForm({ onClose, onSuccess, payment }: CashTransac
     const glAccount = accounts.find((a) => a.id === line.gl_account_id)
     if (!glAccount || !glAccount.code) return
 
-    // Find allocation codes for this GL account
     const codes = allMappings
       .filter((m) => m.gl_code === glAccount.code && m.active)
       .map((m) => m.allocation_code)
 
-    // Merge existing allocations with any new codes
     const existing = new Map(line.allocations.map((a) => [a.code, a.amount]))
     for (const code of codes) {
       if (!existing.has(code)) existing.set(code, '0')
@@ -154,7 +151,6 @@ export function CashTransactionForm({ onClose, onSuccess, payment }: CashTransac
 
     setAllocLineId(lineId)
     setAllocError(null)
-    // Update the line's allocations to include any new codes
     setLines(lines.map((l) =>
       l.id === lineId
         ? { ...l, allocations: Array.from(existing.entries()).map(([c, amt]) => ({ code: c, amount: amt })) }
@@ -185,7 +181,7 @@ export function CashTransactionForm({ onClose, onSuccess, payment }: CashTransac
     if (!modeOfPaymentId) { setError('Select a mode of payment'); return }
     if (!selectedPeriodId) { setError('Select an accounting period'); return }
     if (!voucherAmount || vt <= 0) { setError('Enter a valid voucher amount'); return }
-    if (!paidTo.trim()) { setError('Enter the payee name'); return }
+    if (!receivedFrom.trim()) { setError('Enter the payer name'); return }
 
     const selectedPeriod = periods.find((p) => p.id === selectedPeriodId)
     if (selectedPeriod && (postingDate < selectedPeriod.start_date || postingDate > selectedPeriod.end_date)) {
@@ -198,7 +194,7 @@ export function CashTransactionForm({ onClose, onSuccess, payment }: CashTransac
       date: postingDate,
       voucher_amount: vt,
       mode_of_payment_id: modeOfPaymentId,
-      paid_to: paidTo.trim(),
+      received_from: receivedFrom.trim(),
       invoice_no: invoiceNo.trim(),
       description: description.trim(),
     }
@@ -218,20 +214,20 @@ export function CashTransactionForm({ onClose, onSuccess, payment }: CashTransac
     setSaving(true)
     setError(null)
     try {
-      if (isEditing && payment) {
-        await updatePayment(payment.id, header, lineData)
+      if (isEditing && receipt) {
+        await updateReceipt(receipt.id, header, lineData)
       } else {
-        await createPayment(header, lineData)
+        await createReceipt(header, lineData)
       }
       onSuccess?.()
       onClose()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create payment')
+      setError(err instanceof Error ? err.message : 'Failed to create receipt')
     }
     setSaving(false)
   }
 
-  const badge = payment ? STATUS_BADGE[payment.status] || STATUS_BADGE.draft : STATUS_BADGE.draft
+  const badge = receipt ? STATUS_BADGE[receipt.status] || STATUS_BADGE.draft : STATUS_BADGE.draft
 
   const inputClass = readonly
     ? 'w-full h-7 px-2 text-xs border border-[#dddbda] rounded text-[#16325c] bg-[#fafaf9] cursor-default'
@@ -251,14 +247,14 @@ export function CashTransactionForm({ onClose, onSuccess, payment }: CashTransac
         <div className="flex items-center justify-between gap-3 mb-2.5">
           <div className="flex items-center gap-3 min-w-0">
             <h1 className="text-lg font-light text-[#16325c] truncate">
-              {isEditing && payment ? payment.voucher_number : generatePaymentNumber(payments.length + 1)}
+              {isEditing && receipt ? receipt.voucher_number : generateReceiptNumber(receipts.length + 1)}
             </h1>
             <div
               className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-semibold shrink-0"
               style={{ backgroundColor: badge.bg, color: badge.text, borderColor: badge.border, borderWidth: 1 }}
             >
               <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: badge.dot }} />
-              {payment ? payment.status : 'Draft'}
+              {receipt ? receipt.status : 'Draft'}
             </div>
           </div>
           <div className="flex items-center gap-2 shrink-0">
@@ -299,11 +295,11 @@ export function CashTransactionForm({ onClose, onSuccess, payment }: CashTransac
           </div>
         </div>
 
-        {/* Line 3: Paid To + Invoice No + Description/Contra */}
+        {/* Line 3: Received From + Invoice No + Description/Contra */}
         <div className="grid grid-cols-2 gap-x-3 mt-1.5">
           <div>
-            <label className="text-[10px] font-bold text-[#514f4d] uppercase tracking-wider block leading-tight">Paid To <span className="text-[#c23934]">*</span></label>
-            <input type="text" value={paidTo} onChange={readonly ? undefined : (e) => setPaidTo(e.target.value)} className={inputClass} readOnly={readonly} placeholder="Payee name" />
+            <label className="text-[10px] font-bold text-[#514f4d] uppercase tracking-wider block leading-tight">Received From <span className="text-[#c23934]">*</span></label>
+            <input type="text" value={receivedFrom} onChange={readonly ? undefined : (e) => setReceivedFrom(e.target.value)} className={inputClass} readOnly={readonly} placeholder="Payer name" />
           </div>
           {selectedMode && selectedMode.gl_account_id && vt > 0 ? (
             <div className="grid grid-cols-3 gap-x-3">
@@ -316,10 +312,10 @@ export function CashTransactionForm({ onClose, onSuccess, payment }: CashTransac
                 <input type="text" value={description} onChange={readonly ? undefined : (e) => setDescription(e.target.value)} className={inputClass} readOnly={readonly} placeholder="Optional" />
               </div>
               <div>
-                <label className="text-[10px] font-bold text-[#514f4d] uppercase tracking-wider block leading-tight">Contra (DR)</label>
-                <div className="h-7 px-2 bg-[#d2f4e0] border border-[#007a33] rounded flex items-center gap-1.5 text-[11px] text-[#007a33] font-medium truncate">
+                <label className="text-[10px] font-bold text-[#514f4d] uppercase tracking-wider block leading-tight">Contra (CR)</label>
+                <div className="h-7 px-2 bg-[#fef0f0] border border-[#c23934] rounded flex items-center gap-1.5 text-[11px] text-[#c23934] font-medium truncate">
                   <svg className="w-3 h-3 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
-                  <span className="font-bold shrink-0">DR</span>
+                  <span className="font-bold shrink-0">CR</span>
                   <span className="truncate">{accounts.find((a) => a.id === selectedMode.gl_account_id)?.code} · {accounts.find((a) => a.id === selectedMode.gl_account_id)?.name}</span>
                   <span className="font-mono shrink-0 ml-auto">${vt.toFixed(2)}</span>
                 </div>
@@ -379,7 +375,7 @@ export function CashTransactionForm({ onClose, onSuccess, payment }: CashTransac
             {linesWithRunning.map((line, idx) => (
               <div
                 key={line.id}
-                className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-[40px_1fr_60px_100px_120px_100px_80px] gap-2 sm:gap-2 lg:gap-0 px-2 sm:px-3 lg:px-4 py-2 border-b border-[#dddbda] last:border-b-0 hover:bg-[#fafaf9] transition-colors lg:border-l-2 lg:border-l-red-400"
+                className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-[40px_1fr_60px_100px_120px_100px_80px] gap-2 sm:gap-2 lg:gap-0 px-2 sm:px-3 lg:px-4 py-2 border-b border-[#dddbda] last:border-b-0 hover:bg-[#fafaf9] transition-colors lg:border-l-2 lg:border-l-emerald-500"
               >
                 <div className="hidden lg:flex items-center justify-center text-xs text-slate-400 font-mono select-none">{idx + 1}</div>
                 <div className="sm:col-span-2 lg:col-span-1">
@@ -392,7 +388,7 @@ export function CashTransactionForm({ onClose, onSuccess, payment }: CashTransac
                     <LookupField
                       value={line.gl_account_id}
                       onChange={(v) => updateLine(line.id, 'gl_account_id', v)}
-                      options={debitAccounts.map((a) => ({ id: a.id, label: a.code ? `${a.code} · ${a.name}` : a.name }))}
+                      options={creditAccounts.map((a) => ({ id: a.id, label: a.code ? `${a.code} · ${a.name}` : a.name }))}
                       placeholder="— Select GL Account —"
                       searchPlaceholder="Search accounts by code or name..."
                     />
@@ -400,8 +396,8 @@ export function CashTransactionForm({ onClose, onSuccess, payment }: CashTransac
                 </div>
                 <div className="flex items-center justify-center">
                   <label className="lg:hidden text-[10px] font-bold text-[#514f4d] uppercase tracking-wider mb-0.5 block">DR/CR</label>
-                  <span className="inline-flex items-center justify-center w-full h-8 text-xs font-bold rounded bg-[#fef0f0] text-[#c23934] border border-[#c23934]">
-                    CR
+                  <span className="inline-flex items-center justify-center w-full h-8 text-xs font-bold rounded bg-[#d2f4e0] text-[#007a33] border border-[#007a33]">
+                    DR
                   </span>
                 </div>
                 <div className="flex items-center justify-center">
@@ -482,8 +478,8 @@ export function CashTransactionForm({ onClose, onSuccess, payment }: CashTransac
           {vt > 0 && (
             <div className={`grid grid-cols-3 gap-3 px-4 py-1.5 text-xs font-medium border-b ${balanced ? 'bg-[#d2f4e0] text-[#007a33] border-[#007a33]' : 'bg-[#fef0f0] text-[#c23934] border-[#c23934]'}`}>
               <span>{balanced ? '✓ Balanced' : '✕ Not Balanced'}</span>
-              <span className="text-center">DR (Contra): <span className="font-mono">${vt.toFixed(2)}</span></span>
-              <span className="text-right">CR (Allocations): <span className="font-mono">${totalLines.toFixed(2)}</span>{!balanced && ` (Diff $${Math.abs(diff).toFixed(2)})`}</span>
+              <span className="text-center">CR (Contra): <span className="font-mono">${vt.toFixed(2)}</span></span>
+              <span className="text-right">DR (Allocations): <span className="font-mono">${totalLines.toFixed(2)}</span>{!balanced && ` (Diff $${Math.abs(diff).toFixed(2)})`}</span>
             </div>
           )}
           <div className="flex items-center justify-between px-4 py-2.5 bg-[#f3f3f3] rounded-b-lg">
@@ -492,11 +488,11 @@ export function CashTransactionForm({ onClose, onSuccess, payment }: CashTransac
               {vt > 0 && balanced && (
                 <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#007a33]">
                   <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
-                  DR = CR — {readonly ? 'Balanced entry' : 'Ready to post to ledger'}
+                  CR = DR — {readonly ? 'Balanced entry' : 'Ready to post to ledger'}
                 </span>
               )}
               {vt > 0 && !balanced && (
-                <span className="text-xs text-slate-400">DR (contra) must equal CR (allocations) to balance</span>
+                <span className="text-xs text-slate-400">CR (contra) must equal DR (allocations) to balance</span>
               )}
             </div>
             <div className="text-xs text-[#514f4d] flex items-center gap-3">

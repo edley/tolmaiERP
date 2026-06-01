@@ -25,6 +25,21 @@ export function usePayments() {
       if (error) {
         console.error('Failed to fetch payments:', error.message)
       } else if (data && data.length > 0) {
+        // Try to fetch allocations separately (best-effort)
+        let allocMap: Record<string, { allocation_code: string; amount: number }[]> = {}
+        try {
+          const { data: allocData } = await supabase
+            .from('payment_line_allocations')
+            .select('payment_line_id, allocation_code, amount')
+          if (allocData) {
+            for (const a of allocData as any[]) {
+              const lineId = a.payment_line_id
+              if (!allocMap[lineId]) allocMap[lineId] = []
+              allocMap[lineId].push({ allocation_code: a.allocation_code, amount: Number(a.amount) })
+            }
+          }
+        } catch { /* allocations table may not exist */ }
+
         const mapped: Payment[] = data.map((r: any) => ({
           id: r.id,
           voucher_number: r.voucher_number,
@@ -39,6 +54,7 @@ export function usePayments() {
             id: l.id,
             gl_account_id: l.gl_account_id,
             amount: Number(l.amount),
+            allocations: allocMap[l.id] ?? [],
           })),
           status: r.status,
           created_at: r.created_at,
@@ -111,12 +127,30 @@ export function usePayments() {
     if (payment.lines.length > 0) {
       const { error: insError } = await supabase.from('payment_lines').insert(
         payment.lines.map((l) => ({
+          id: l.id,
           payment_id: payment.id,
           gl_account_id: l.gl_account_id,
           amount: l.amount,
         }))
       )
       if (insError) throw new Error(insError.message)
+
+      // Persist line-level allocations (best-effort — table may not exist yet)
+      const allocData = payment.lines.flatMap((l) =>
+        (l.allocations ?? []).map((a) => ({
+          payment_line_id: l.id,
+          allocation_code: a.allocation_code,
+          amount: a.amount,
+        }))
+      )
+      if (allocData.length > 0) {
+        try {
+          const { error: allocError } = await supabase.from('payment_line_allocations').insert(allocData)
+          if (allocError) console.warn('Failed to persist allocations:', allocError.message)
+        } catch (e) {
+          console.warn('Allocations table not available — skipping allocation persistence', e)
+        }
+      }
     }
   }, [])
 

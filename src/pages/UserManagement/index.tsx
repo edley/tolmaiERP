@@ -9,7 +9,7 @@ import {
   grantMenu,
   revokeMenu,
 } from '../../lib/rbac'
-import { ALL_MENUS, getMenuByKey, getModules } from '../../lib/menus'
+import { getMenuByKey, getModules, getFlatMenus } from '../../lib/menus'
 import {
   DOC_TYPES,
   DOC_TYPE_LABELS,
@@ -58,7 +58,7 @@ export function UserManagement() {
     )
   }
 
-  const menuOptions = ALL_MENUS.map((m) => ({ id: m.key, label: m.label, sublabel: m.module }))
+  const menuOptions = getFlatMenus().map((m) => ({ id: m.key, label: m.label, sublabel: m.module }))
 
   const groupedAccess = useMemo(() => {
     const result: Record<string, Record<string, string[]>> = {}

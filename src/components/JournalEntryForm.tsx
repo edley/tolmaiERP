@@ -1,12 +1,13 @@
 import { useState, useRef, useMemo } from 'react'
-import { Plus, Trash2 } from 'lucide-react'
+import { Plus, Trash2, Split } from 'lucide-react'
 import { useAccounts } from '../hooks/useAccounts'
 import { useJournalEntries } from '../hooks/useJournalEntries'
 import { useTransactionTypes } from '../hooks/useTransactionTypes'
 import { generateEntryNumber } from '../lib/journalEntries'
 import { LookupField } from './LookupField'
 import { EditableNumber } from './EditableNumber'
-import { AuditTrail } from './AuditTrail'
+import { Modal } from './Modal'
+import { getMappings } from '../lib/allocationMappings'
 import { usePeriod } from '../contexts/PeriodContext'
 import type { JournalEntry, JournalEntryItem } from '../types'
 
@@ -16,6 +17,7 @@ interface Line {
   side: 'dr' | 'cr'
   amount: string
   description: string
+  allocations: { code: string; amount: string }[]
 }
 
 interface JournalEntryFormProps {
@@ -48,6 +50,7 @@ export function JournalEntryForm({ onClose, onSuccess, entry }: JournalEntryForm
       side: item.debit > 0 ? 'dr' as const : 'cr' as const,
       amount: String(item.debit > 0 ? item.debit : item.credit),
       description: item.description ?? '',
+      allocations: (item.allocations ?? []).map((a) => ({ code: a.allocation_code, amount: String(a.amount) })),
     })),
     [entry]
   )
@@ -63,15 +66,22 @@ export function JournalEntryForm({ onClose, onSuccess, entry }: JournalEntryForm
     existingLines.length > 0
       ? existingLines
       : [
-          { id: 1, account_id: '', side: 'dr', amount: '', description: '' },
-          { id: 2, account_id: '', side: 'cr', amount: '', description: '' },
+          { id: 1, account_id: '', side: 'dr', amount: '', description: '', allocations: [] },
+          { id: 2, account_id: '', side: 'cr', amount: '', description: '', allocations: [] },
         ]
   )
   const nextLineId = useRef(existingLines.length + 1 || 3)
 
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [allocLineId, setAllocLineId] = useState<number | null>(null)
+  const [allocError, setAllocError] = useState<string | null>(null)
   const linesEndRef = useRef<HTMLDivElement>(null)
+
+  const allMappings = useMemo(() => {
+    if (accounts.length === 0) return []
+    return getMappings(accounts)
+  }, [accounts])
 
   const detailAccounts = accounts
   const selectedType = transactionTypes.find((t) => t.id === transactionTypeId)
@@ -86,15 +96,15 @@ export function JournalEntryForm({ onClose, onSuccess, entry }: JournalEntryForm
   const diff = Math.round((totalDr - totalCr) * 100) / 100
 
   const vt = parseFloat(voucherTotal) || 0
-  const balanced = diff === 0 && vt > 0 && Math.abs(vt - totalDr) < 0.01
-  const canSave = !readonly && balanced && lines.some((l) => l.account_id && parseFloat(l.amount) > 0) && lines.every((l) => !l.account_id || parseFloat(l.amount) > 0)
+  const balanced = diff === 0 && totalDr > 0
+  const canSave = !readonly && balanced && vt > 0 && lines.some((l) => l.account_id && parseFloat(l.amount) > 0) && lines.every((l) => !l.account_id || parseFloat(l.amount) > 0)
 
   const seq = entries.length + 1
   const entryNumber = isEditing && entry ? entry.entry_number : generateEntryNumber(seq)
 
   const addLine = () => {
     if (readonly) return
-    const newLines = [...lines, { id: nextLineId.current++, account_id: '', side: 'dr' as const, amount: '', description: '' }]
+    const newLines = [...lines, { id: nextLineId.current++, account_id: '', side: 'dr' as const, amount: '', description: '', allocations: [] }]
     setLines(newLines)
     setTimeout(() => linesEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 50)
   }
@@ -126,6 +136,55 @@ export function JournalEntryForm({ onClose, onSuccess, entry }: JournalEntryForm
     setLines(next)
   }
 
+  const updateAlloc = (lineId: number, code: string, amount: string) => {
+    setLines(lines.map((l) =>
+      l.id === lineId
+        ? { ...l, allocations: l.allocations.map((a) => a.code === code ? { ...a, amount } : a) }
+        : l
+    ))
+  }
+
+  const openAllocModal = (lineId: number) => {
+    const line = lines.find((l) => l.id === lineId)
+    if (!line) return
+    const glAccount = accounts.find((a) => a.id === line.account_id)
+    if (!glAccount || !glAccount.code) return
+
+    const codes = allMappings
+      .filter((m) => m.gl_code === glAccount.code && m.active)
+      .map((m) => m.allocation_code)
+
+    const existing = new Map(line.allocations.map((a) => [a.code, a.amount]))
+    for (const code of codes) {
+      if (!existing.has(code)) existing.set(code, '0')
+    }
+
+    setAllocLineId(lineId)
+    setAllocError(null)
+    setLines(lines.map((l) =>
+      l.id === lineId
+        ? { ...l, allocations: Array.from(existing.entries()).map(([c, amt]) => ({ code: c, amount: amt })) }
+        : l
+    ))
+  }
+
+  const closeAllocModal = () => {
+    setAllocLineId(null)
+    setAllocError(null)
+  }
+
+  const saveAllocModal = () => {
+    const line = lines.find((l) => l.id === allocLineId)
+    if (!line) return
+    const lineAmount = parseFloat(line.amount) || 0
+    const totalAlloc = line.allocations.reduce((s, a) => s + (parseFloat(a.amount) || 0), 0)
+    if (Math.abs(totalAlloc - lineAmount) > 0.01) {
+      setAllocError(`Allocation total ($${totalAlloc.toFixed(2)}) must equal line amount ($${lineAmount.toFixed(2)})`)
+      return
+    }
+    closeAllocModal()
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (readonly) return
@@ -144,6 +203,12 @@ export function JournalEntryForm({ onClose, onSuccess, entry }: JournalEntryForm
         debit: l.side === 'dr' ? (parseFloat(l.amount) || 0) : 0,
         credit: l.side === 'cr' ? (parseFloat(l.amount) || 0) : 0,
         description: l.description || null,
+        allocations: l.allocations
+          .filter((a) => parseFloat(a.amount) > 0)
+          .map((a) => ({
+            allocation_code: a.code,
+            amount: parseFloat(a.amount) || 0,
+          })),
       }))
 
     setSaving(true)
@@ -222,7 +287,7 @@ export function JournalEntryForm({ onClose, onSuccess, entry }: JournalEntryForm
         </div>
 
         {/* Line 2: Main fields row */}
-        <div className="grid grid-cols-5 gap-x-3 gap-y-0">
+        <div className="grid grid-cols-4 gap-x-3 gap-y-0">
           <div>
             <label className="text-[10px] font-bold text-[#514f4d] uppercase tracking-wider block leading-tight">Journal Type <span className="text-[#c23934]">*</span></label>
             <LookupField compact value={transactionTypeId} onChange={readonly ? () => {} : setTransactionTypeId} options={transactionTypes.map((t) => ({ id: t.id, label: `${t.code} — ${t.name}`, sublabel: t.description ?? undefined }))} placeholder="—" searchPlaceholder="Search types..." />
@@ -239,16 +304,18 @@ export function JournalEntryForm({ onClose, onSuccess, entry }: JournalEntryForm
             <label className="text-[10px] font-bold text-[#514f4d] uppercase tracking-wider block leading-tight">Voucher Total <span className="text-[#c23934]">*</span></label>
             <EditableNumber compact value={voucherTotal} onChange={readonly ? () => {} : setVoucherTotal} />
           </div>
+        </div>
+
+        {/* Line 3: Description + Related To */}
+        <div className="grid grid-cols-2 gap-x-3 mt-1.5">
+          <div>
+            <label className="text-[10px] font-bold text-[#514f4d] uppercase tracking-wider block leading-tight">Description <span className="text-[#c23934]">*</span></label>
+            <input type="text" value={description} onChange={readonly ? undefined : (e) => setDescription(e.target.value)} className={inputClass} readOnly={readonly} placeholder="Brief explanation of this transaction" />
+          </div>
           <div>
             <label className="text-[10px] font-bold text-[#514f4d] uppercase tracking-wider block leading-tight">Related To</label>
             <input type="text" value={relatedTo} onChange={readonly ? undefined : (e) => setRelatedTo(e.target.value)} className={inputClass} readOnly={readonly} placeholder="e.g. INV-001" />
           </div>
-        </div>
-
-        {/* Line 3: Description */}
-        <div className="mt-1.5">
-          <label className="text-[10px] font-bold text-[#514f4d] uppercase tracking-wider block leading-tight">Description <span className="text-[#c23934]">*</span></label>
-          <input type="text" value={description} onChange={readonly ? undefined : (e) => setDescription(e.target.value)} className={inputClass} readOnly={readonly} placeholder="Brief explanation of this transaction" />
         </div>
       </div>
 
@@ -280,10 +347,11 @@ export function JournalEntryForm({ onClose, onSuccess, entry }: JournalEntryForm
         </div>
 
         {/* Table header */}
-        <div className="hidden lg:grid grid-cols-[40px_1fr_72px_140px_1fr_80px] gap-0 px-4 py-2 bg-white border-b border-[#dddbda] text-[11px] font-bold text-[#514f4d] uppercase tracking-wider shrink-0">
+        <div className="hidden lg:grid grid-cols-[40px_1fr_72px_100px_120px_1fr_80px] gap-0 px-4 py-2 bg-white border-b border-[#dddbda] text-[11px] font-bold text-[#514f4d] uppercase tracking-wider shrink-0">
           <span className="text-center">#</span>
           <span>GL Account <span className="text-[#c23934]">*</span></span>
           <span className="text-center">DR / CR</span>
+          <span className="text-center">Allocation</span>
           <span className="text-right">Amount <span className="text-[#c23934]">*</span></span>
           <span>Memo</span>
           <span className="text-center">Actions</span>
@@ -299,7 +367,7 @@ export function JournalEntryForm({ onClose, onSuccess, entry }: JournalEntryForm
           {lines.map((line, idx) => (
             <div
               key={line.id}
-              className={`grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-[40px_1fr_72px_140px_1fr_80px] gap-2 sm:gap-2 lg:gap-0 px-2 sm:px-3 lg:px-4 py-2 border-b border-[#dddbda] last:border-b-0 hover:bg-[#fafaf9] transition-colors ${
+              className={`grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-[40px_1fr_72px_100px_120px_1fr_80px] gap-2 sm:gap-2 lg:gap-0 px-2 sm:px-3 lg:px-4 py-2 border-b border-[#dddbda] last:border-b-0 hover:bg-[#fafaf9] transition-colors ${
                 line.side === 'dr' ? 'lg:border-l-2 lg:border-l-emerald-400' : 'lg:border-l-2 lg:border-l-red-400'
               }`}
             >
@@ -352,7 +420,35 @@ export function JournalEntryForm({ onClose, onSuccess, entry }: JournalEntryForm
                 )}
               </div>
 
-              {/* Amount */}
+              <div className="flex items-center justify-center">
+                {(() => {
+                  const glAccount = accounts.find((a) => a.id === line.account_id)
+                  const canAlloc = glAccount?.allocation_allow && glAccount.code && allMappings.some((m) => m.gl_code === glAccount.code && m.active)
+                  const totalAlloc = line.allocations.reduce((s, a) => s + (parseFloat(a.amount) || 0), 0)
+                  const lineAmt = parseFloat(line.amount) || 0
+                  const balanced = lineAmt > 0 && Math.abs(totalAlloc - lineAmt) < 0.01
+                  return canAlloc ? (
+                    <button
+                      type="button"
+                      onClick={() => openAllocModal(line.id)}
+                      className={`inline-flex items-center gap-1 px-2 py-1 text-[10px] font-bold rounded border transition-colors ${
+                        totalAlloc > 0
+                          ? balanced
+                            ? 'bg-[#d2f4e0] text-[#007a33] border-[#007a33]'
+                            : 'bg-[#fef7e0] text-[#6b5200] border-[#f9d84a]'
+                          : 'bg-white text-[#514f4d] border-[#dddbda] hover:border-[#0070d2] hover:text-[#0070d2]'
+                      }`}
+                      title="Allocate line amount"
+                    >
+                      <Split className="w-3 h-3" />
+                      {totalAlloc > 0 ? `$${totalAlloc.toFixed(0)}` : 'Alloc'}
+                    </button>
+                  ) : (
+                    <span className="text-[10px] text-slate-300">—</span>
+                  )
+                })()}
+              </div>
+
               <div>
                 <label className="lg:hidden text-[10px] font-bold text-[#514f4d] uppercase tracking-wider mb-0.5 block">Amount</label>
                 {readonly ? (
@@ -454,8 +550,85 @@ export function JournalEntryForm({ onClose, onSuccess, entry }: JournalEntryForm
         </div>
       </div>
 
-      {/* ── AUDIT TRAIL ── */}
-      {entry && <div className="mt-4 shrink-0"><AuditTrail data={entry} /></div>}
+      {/* ── ALLOCATION MODAL ── */}
+      <Modal
+        open={allocLineId !== null}
+        onClose={closeAllocModal}
+        title="Line Allocation"
+        size="md"
+      >
+        {(() => {
+          const line = lines.find((l) => l.id === allocLineId)
+          if (!line) return null
+          const glAccount = accounts.find((a) => a.id === line.account_id)
+          const lineAmount = parseFloat(line.amount) || 0
+          const totalAlloc = line.allocations.reduce((s, a) => s + (parseFloat(a.amount) || 0), 0)
+          return (
+            <div className="space-y-4">
+              {allocError && (
+                <div className="p-3 bg-[#fef0f0] border border-[#c23934] rounded text-xs text-[#c23934]">{allocError}</div>
+              )}
+              <div className="flex items-center gap-3 text-sm">
+                <span className="font-medium text-[#16325c]">{glAccount?.code} — {glAccount?.name}</span>
+                <span className="text-slate-400">|</span>
+                <span className="font-mono font-medium text-[#16325c]">Line amount: ${lineAmount.toFixed(2)}</span>
+              </div>
+              <div className="space-y-2">
+                <div className="grid grid-cols-[1fr_120px] gap-2 text-[10px] font-bold text-[#514f4d] uppercase tracking-wider px-1">
+                  <span>Allocation Code</span>
+                  <span className="text-right">Amount</span>
+                </div>
+                {line.allocations.length === 0 && (
+                  <div className="text-sm text-slate-400 text-center py-4">
+                    No allocation codes found for this GL account.
+                  </div>
+                )}
+                {line.allocations.map((a) => (
+                  <div key={a.code} className="grid grid-cols-[1fr_120px] gap-2 items-center">
+                    <span className="inline-flex px-2 py-0.5 text-[11px] font-bold bg-[#e8f4fe] text-[#0070d2] rounded justify-self-start">
+                      {a.code}
+                    </span>
+                    <div className="relative">
+                      <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-slate-400">$</span>
+                      <input
+                        type="number" step="0.01" min="0"
+                        value={a.amount}
+                        onChange={(e) => { updateAlloc(line.id, a.code, e.target.value); setAllocError(null) }}
+                        className="w-full h-8 pl-5 pr-2.5 text-sm border border-[#dddbda] rounded text-[#16325c] font-mono text-right hover:border-[#0070d2] focus:border-[#0070d2] focus:ring-1 focus:ring-[#0070d2] focus:outline-none"
+                        placeholder="0.00"
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div className="flex items-center justify-between pt-2 border-t border-slate-100">
+                <span className={`text-xs font-semibold ${Math.abs(totalAlloc - lineAmount) < 0.01 ? 'text-[#007a33]' : 'text-[#c23934]'}`}>
+                  Total allocated: <span className="font-mono">${totalAlloc.toFixed(2)}</span>
+                  {lineAmount > 0 && Math.abs(totalAlloc - lineAmount) < 0.01 && ' ✓ Balanced'}
+                  {lineAmount > 0 && Math.abs(totalAlloc - lineAmount) >= 0.01 && ` of $${lineAmount.toFixed(2)} (${(totalAlloc / lineAmount * 100).toFixed(0)}%)`}
+                </span>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={closeAllocModal}
+                    className="px-3 py-1.5 text-xs font-medium text-[#514f4d] bg-white border border-[#dddbda] rounded hover:bg-[#f3f3f3] transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={saveAllocModal}
+                    disabled={lineAmount > 0 && Math.abs(totalAlloc - lineAmount) >= 0.01}
+                    className="px-3 py-1.5 text-xs font-semibold text-white bg-[#0070d2] rounded hover:bg-[#005fb2] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                  >
+                    Apply
+                  </button>
+                </div>
+              </div>
+            </div>
+          )
+        })()}
+      </Modal>
     </form>
   )
 }

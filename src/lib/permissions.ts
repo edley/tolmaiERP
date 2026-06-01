@@ -1,10 +1,10 @@
 import type { UserType } from './rbac'
 
-export type DocType = 'journal_entry' | 'account' | 'ledger_entry' | 'company' | 'transaction_type' | 'accounting_period' | 'payment'
+export type DocType = 'journal_entry' | 'account' | 'ledger_entry' | 'company' | 'transaction_type' | 'accounting_period' | 'payment' | 'receipt' | 'trial_balance' | 'allocation_mapping'
 
 export type CrudOp = 'create' | 'read' | 'update' | 'delete'
 
-export const DOC_TYPES: DocType[] = ['journal_entry', 'account', 'ledger_entry', 'company', 'transaction_type', 'accounting_period', 'payment']
+export const DOC_TYPES: DocType[] = ['journal_entry', 'account', 'ledger_entry', 'company', 'transaction_type', 'accounting_period', 'payment', 'receipt', 'trial_balance', 'allocation_mapping']
 
 export const DOC_TYPE_LABELS: Record<DocType, string> = {
   journal_entry: 'Journal Entry',
@@ -14,6 +14,9 @@ export const DOC_TYPE_LABELS: Record<DocType, string> = {
   transaction_type: 'Transaction Type',
   accounting_period: 'Accounting Period',
   payment: 'Payment',
+  receipt: 'Receipt',
+  trial_balance: 'Trial Balance',
+  allocation_mapping: 'Allocation Mapping',
 }
 
 export const DEFAULT_CRUD: Record<UserType, Record<DocType, Record<CrudOp, boolean>>> = {
@@ -25,6 +28,9 @@ export const DEFAULT_CRUD: Record<UserType, Record<DocType, Record<CrudOp, boole
     transaction_type: { create: true, read: true, update: true, delete: true },
     accounting_period: { create: true, read: true, update: true, delete: true },
     payment: { create: true, read: true, update: true, delete: true },
+    receipt: { create: false, read: true, update: false, delete: false },
+    trial_balance: { create: false, read: true, update: false, delete: false },
+    allocation_mapping: { create: true, read: true, update: true, delete: true },
   }),
   Manager: initCrudFull({
     journal_entry: { create: true, read: true, update: true, delete: false },
@@ -34,6 +40,9 @@ export const DEFAULT_CRUD: Record<UserType, Record<DocType, Record<CrudOp, boole
     transaction_type: { create: false, read: true, update: false, delete: false },
     accounting_period: { create: false, read: true, update: false, delete: false },
     payment: { create: true, read: true, update: true, delete: false },
+    receipt: { create: true, read: true, update: true, delete: false },
+    trial_balance: { create: false, read: true, update: false, delete: false },
+    allocation_mapping: { create: true, read: true, update: true, delete: false },
   }),
   'Team Leader': initCrudFull({
     journal_entry: { create: true, read: true, update: true, delete: false },
@@ -43,6 +52,9 @@ export const DEFAULT_CRUD: Record<UserType, Record<DocType, Record<CrudOp, boole
     transaction_type: { create: false, read: true, update: false, delete: false },
     accounting_period: { create: false, read: true, update: false, delete: false },
     payment: { create: true, read: true, update: true, delete: false },
+    receipt: { create: true, read: true, update: true, delete: false },
+    trial_balance: { create: false, read: true, update: false, delete: false },
+    allocation_mapping: { create: true, read: true, update: true, delete: false },
   }),
   User: initCrudFull({
     journal_entry: { create: true, read: true, update: false, delete: false },
@@ -52,6 +64,9 @@ export const DEFAULT_CRUD: Record<UserType, Record<DocType, Record<CrudOp, boole
     transaction_type: { create: false, read: true, update: false, delete: false },
     accounting_period: { create: false, read: true, update: false, delete: false },
     payment: { create: true, read: true, update: false, delete: false },
+    receipt: { create: true, read: true, update: false, delete: false },
+    trial_balance: { create: false, read: true, update: false, delete: false },
+    allocation_mapping: { create: true, read: true, update: false, delete: false },
   }),
 }
 

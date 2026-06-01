@@ -25,6 +25,21 @@ export function useJournalEntries() {
       if (error) {
         console.error('Failed to fetch journal entries:', error.message)
       } else if (data && data.length > 0) {
+        // Try to fetch allocations separately (best-effort)
+        let allocMap: Record<string, { allocation_code: string; amount: number }[]> = {}
+        try {
+          const { data: allocData } = await supabase
+            .from('journal_entry_item_allocations')
+            .select('journal_entry_item_id, allocation_code, amount')
+          if (allocData) {
+            for (const a of allocData as any[]) {
+              const itemId = a.journal_entry_item_id
+              if (!allocMap[itemId]) allocMap[itemId] = []
+              allocMap[itemId].push({ allocation_code: a.allocation_code, amount: Number(a.amount) })
+            }
+          }
+        } catch { /* allocations table may not exist */ }
+
         const mapped: JournalEntry[] = data.map((r: any) => ({
           id: r.id,
           entry_number: r.entry_number,
@@ -54,6 +69,7 @@ export function useJournalEntries() {
             debit: Number(item.debit),
             credit: Number(item.credit),
             description: item.description,
+            allocations: allocMap[item.id] ?? [],
           })),
         }))
         setEntries(mapped)
@@ -116,6 +132,7 @@ export function useJournalEntries() {
     if (items.length > 0) {
       const { error: insError } = await supabase.from('journal_entry_items').insert(
         items.map((item) => ({
+          id: item.id,
           journal_entry_id: entry.id,
           account_id: item.account_id,
           debit: item.debit,
@@ -124,6 +141,23 @@ export function useJournalEntries() {
         }))
       )
       if (insError) throw new Error(insError.message)
+
+      // Persist item-level allocations (best-effort)
+      const allocData = items.flatMap((item) =>
+        (item.allocations ?? []).map((a) => ({
+          journal_entry_item_id: item.id,
+          allocation_code: a.allocation_code,
+          amount: a.amount,
+        }))
+      )
+      if (allocData.length > 0) {
+        try {
+          const { error: allocError } = await supabase.from('journal_entry_item_allocations').insert(allocData)
+          if (allocError) console.warn('Failed to persist JE item allocations:', allocError.message)
+        } catch (e) {
+          console.warn('JE item allocations table not available — skipping', e)
+        }
+      }
     }
   }, [])
 
@@ -262,7 +296,9 @@ export function useJournalEntries() {
           posting_date: existing.posting_date,
           debit: item.debit,
           credit: item.credit,
-          description: item.description || existing.description,
+          description: item.allocations && item.allocations.length > 0
+            ? `${item.description || existing.description} (${item.allocations.map((a) => `${a.allocation_code}: $${a.amount.toFixed(2)}`).join(', ')})`
+            : (item.description || existing.description),
           period_id: existing.period_id,
         }))
       )

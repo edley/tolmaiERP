@@ -10,6 +10,7 @@ CREATE TABLE accounts (
   parent_id UUID REFERENCES accounts(id) ON DELETE SET NULL,
   is_group BOOLEAN DEFAULT FALSE,
   is_cash_account BOOLEAN DEFAULT FALSE,
+  allocation_allow BOOLEAN DEFAULT FALSE,
   description TEXT,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
@@ -324,3 +325,180 @@ CREATE INDEX IF NOT EXISTS idx_payment_lines_account ON payment_lines(gl_account
 CREATE TRIGGER update_payments_updated_at
   BEFORE UPDATE ON payments
   FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+
+-- ============================================================
+-- 10. Trial Balance (snapshot per period per account)
+-- ============================================================
+CREATE TABLE trial_balances (
+  period_id UUID NOT NULL REFERENCES accounting_periods(id) ON DELETE CASCADE,
+  account_id UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+  debit NUMERIC(16,2) DEFAULT 0,
+  credit NUMERIC(16,2) DEFAULT 0,
+  PRIMARY KEY (period_id, account_id)
+);
+
+ALTER TABLE trial_balances ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Enable all access on trial_balances"
+  ON trial_balances FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+
+CREATE INDEX IF NOT EXISTS idx_trial_balances_period ON trial_balances(period_id);
+CREATE INDEX IF NOT EXISTS idx_trial_balances_account ON trial_balances(account_id);
+
+-- ============================================================
+-- 11. Receipts (money incoming — mirrors payments)
+-- ============================================================
+CREATE TABLE receipts (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  voucher_number TEXT NOT NULL UNIQUE,
+  period_id UUID REFERENCES accounting_periods(id),
+  date DATE NOT NULL DEFAULT CURRENT_DATE,
+  voucher_amount NUMERIC(16,2) NOT NULL DEFAULT 0,
+  mode_of_payment_id UUID REFERENCES payment_modes(id),
+  received_from TEXT NOT NULL,
+  invoice_no TEXT,
+  description TEXT,
+  status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'submitted', 'approved', 'posted', 'cancelled')),
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  created_by TEXT,
+  created_by_name TEXT,
+  submitted_by TEXT,
+  submitted_by_name TEXT,
+  submitted_at TIMESTAMPTZ,
+  approved_by TEXT,
+  approved_by_name TEXT,
+  approved_at TIMESTAMPTZ,
+  posted_by TEXT,
+  posted_by_name TEXT,
+  posted_at TIMESTAMPTZ
+);
+
+CREATE TABLE receipt_lines (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  receipt_id UUID NOT NULL REFERENCES receipts(id) ON DELETE CASCADE,
+  gl_account_id UUID NOT NULL REFERENCES accounts(id),
+  amount NUMERIC(16,2) NOT NULL DEFAULT 0
+);
+
+ALTER TABLE receipts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE receipt_lines ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Enable all access on receipts"
+  ON receipts FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "Enable all access on receipt_lines"
+  ON receipt_lines FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+
+CREATE INDEX IF NOT EXISTS idx_receipts_period ON receipts(period_id);
+CREATE INDEX IF NOT EXISTS idx_receipts_date ON receipts(date);
+CREATE INDEX IF NOT EXISTS idx_receipts_status ON receipts(status);
+CREATE INDEX IF NOT EXISTS idx_receipts_mode ON receipts(mode_of_payment_id);
+CREATE INDEX IF NOT EXISTS idx_receipt_lines_receipt ON receipt_lines(receipt_id);
+CREATE INDEX IF NOT EXISTS idx_receipt_lines_account ON receipt_lines(gl_account_id);
+
+CREATE TRIGGER update_receipts_updated_at
+  BEFORE UPDATE ON receipts
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+
+-- Add receipt_id and source_type to ledger_entries
+ALTER TABLE ledger_entries ADD COLUMN IF NOT EXISTS receipt_id UUID REFERENCES receipts(id);
+ALTER TABLE ledger_entries ADD COLUMN IF NOT EXISTS source_type TEXT CHECK (source_type IN ('journal_entry', 'payment', 'receipt'));
+
+-- On-demand procedure to generate trial balance for a given period
+CREATE OR REPLACE FUNCTION generate_trial_balance(p_period_id UUID)
+RETURNS void AS $$
+BEGIN
+  DELETE FROM trial_balances WHERE period_id = p_period_id;
+
+  INSERT INTO trial_balances (period_id, account_id, debit, credit)
+  SELECT
+    p_period_id,
+    le.account_id,
+    COALESCE(SUM(le.debit), 0),
+    COALESCE(SUM(le.credit), 0)
+  FROM ledger_entries le
+  WHERE le.period_id = p_period_id
+  GROUP BY le.account_id;
+END;
+$$ LANGUAGE plpgsql;
+
+-- ============================================================
+-- 12. Allocation Mappings (GL account ↔ allocation code)
+-- ============================================================
+CREATE TABLE allocation_mappings (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  gl_account_id UUID REFERENCES accounts(id) ON DELETE CASCADE,
+  gl_code TEXT,
+  allocation_code TEXT NOT NULL,
+  description TEXT,
+  active BOOLEAN DEFAULT TRUE,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE (gl_code, allocation_code)
+);
+
+ALTER TABLE allocation_mappings ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Enable all access on allocation_mappings"
+  ON allocation_mappings FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+
+CREATE INDEX IF NOT EXISTS idx_allocation_mappings_account ON allocation_mappings(gl_account_id);
+CREATE INDEX IF NOT EXISTS idx_allocation_mappings_code ON allocation_mappings(allocation_code);
+
+CREATE TRIGGER update_allocation_mappings_updated_at
+  BEFORE UPDATE ON allocation_mappings
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+
+-- ============================================================
+-- 13. Payment Line Allocations (further decomposition of payment lines)
+-- ============================================================
+CREATE TABLE payment_line_allocations (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  payment_line_id UUID NOT NULL REFERENCES payment_lines(id) ON DELETE CASCADE,
+  allocation_code TEXT NOT NULL,
+  amount NUMERIC(16,2) NOT NULL DEFAULT 0,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE payment_line_allocations ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Enable all access on payment_line_allocations"
+  ON payment_line_allocations FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+
+CREATE INDEX IF NOT EXISTS idx_payment_line_allocations_line ON payment_line_allocations(payment_line_id);
+
+-- ============================================================
+-- 14. Receipt Line Allocations (further decomposition of receipt lines)
+-- ============================================================
+CREATE TABLE receipt_line_allocations (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  receipt_line_id UUID NOT NULL REFERENCES receipt_lines(id) ON DELETE CASCADE,
+  allocation_code TEXT NOT NULL,
+  amount NUMERIC(16,2) NOT NULL DEFAULT 0,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE receipt_line_allocations ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Enable all access on receipt_line_allocations"
+  ON receipt_line_allocations FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+
+CREATE INDEX IF NOT EXISTS idx_receipt_line_allocations_line ON receipt_line_allocations(receipt_line_id);
+
+-- ============================================================
+-- 15. Journal Entry Item Allocations (decomposition of JE line items)
+-- ============================================================
+CREATE TABLE journal_entry_item_allocations (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  journal_entry_item_id UUID NOT NULL REFERENCES journal_entry_items(id) ON DELETE CASCADE,
+  allocation_code TEXT NOT NULL,
+  amount NUMERIC(16,2) NOT NULL DEFAULT 0,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE journal_entry_item_allocations ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Enable all access on journal_entry_item_allocations"
+  ON journal_entry_item_allocations FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+
+CREATE INDEX IF NOT EXISTS idx_je_item_allocations_item ON journal_entry_item_allocations(journal_entry_item_id);

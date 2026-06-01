@@ -2,27 +2,29 @@ import { useState } from 'react'
 import { useAccounts } from '../hooks/useAccounts'
 import { ACCOUNT_TYPE_LABELS } from '../lib/accounting'
 import { LookupField } from './LookupField'
-import type { AccountType } from '../types'
+import type { Account, AccountType } from '../types'
 
 interface AccountFormProps {
   onClose: () => void
+  account?: Account
 }
 
 const TYPES: AccountType[] = ['asset', 'liability', 'equity', 'income', 'expense']
 
-export function AccountForm({ onClose }: AccountFormProps) {
-  const { accounts, createAccount } = useAccounts()
-  const [name, setName] = useState('')
-  const [code, setCode] = useState('')
-  const [type, setType] = useState<AccountType>('asset')
-  const [parentId, setParentId] = useState('')
-  const [isGroup, setIsGroup] = useState(false)
-  const [isCash, setIsCash] = useState(false)
-  const [description, setDescription] = useState('')
+export function AccountForm({ onClose, account }: AccountFormProps) {
+  const { accounts, createAccount, updateAccount } = useAccounts()
+  const [name, setName] = useState(account?.name ?? '')
+  const [code, setCode] = useState(account?.code ?? '')
+  const [type, setType] = useState<AccountType>(account?.type ?? 'asset')
+  const [parentId, setParentId] = useState(account?.parent_id ?? '')
+  const [isGroup, setIsGroup] = useState(account?.is_group ?? false)
+  const [isCash, setIsCash] = useState(account?.is_cash_account ?? false)
+  const [allocationAllow, setAllocationAllow] = useState(account?.allocation_allow ?? false)
+  const [description, setDescription] = useState(account?.description ?? '')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const groupAccounts = accounts.filter((a) => a.is_group)
+  const groupAccounts = accounts.filter((a) => a.is_group && a.id !== account?.id)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -31,18 +33,32 @@ export function AccountForm({ onClose }: AccountFormProps) {
     setSaving(true)
     setError(null)
     try {
-      await createAccount({
-        name: name.trim(),
-        code: code.trim() || null,
-        type,
-        parent_id: parentId || null,
-        is_group: isGroup,
-        is_cash_account: isCash,
-        description: description.trim() || null,
-      })
+      if (account) {
+        await updateAccount(account.id, {
+          name: name.trim(),
+          code: code.trim() || null,
+          type,
+          parent_id: parentId || null,
+          is_group: isGroup,
+          is_cash_account: isCash,
+          allocation_allow: allocationAllow,
+          description: description.trim() || null,
+        })
+      } else {
+        await createAccount({
+          name: name.trim(),
+          code: code.trim() || null,
+          type,
+          parent_id: parentId || null,
+          is_group: isGroup,
+          is_cash_account: isCash,
+          allocation_allow: allocationAllow,
+          description: description.trim() || null,
+        })
+      }
       onClose()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create account')
+      setError(err instanceof Error ? err.message : 'Failed to save account')
     }
     setSaving(false)
   }
@@ -122,6 +138,15 @@ export function AccountForm({ onClose }: AccountFormProps) {
           />
           <span className="text-sm text-slate-700">Cash/Bank Account</span>
         </label>
+        <label className="flex items-center gap-2 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={allocationAllow}
+            onChange={(e) => setAllocationAllow(e.target.checked)}
+            className="w-4 h-4 text-emerald-600 border-slate-300 rounded focus:ring-emerald-500"
+          />
+          <span className="text-sm text-slate-700">Allocation Allowed</span>
+        </label>
       </div>
 
       <div>
@@ -148,7 +173,7 @@ export function AccountForm({ onClose }: AccountFormProps) {
           disabled={saving}
           className="px-4 py-2 text-sm font-medium text-white bg-emerald-600 rounded-lg hover:bg-emerald-700 disabled:opacity-50"
         >
-          {saving ? 'Saving...' : 'Create Account'}
+          {saving ? 'Saving...' : account ? 'Save Changes' : 'Create Account'}
         </button>
       </div>
     </form>

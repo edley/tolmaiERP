@@ -1,7 +1,13 @@
+export interface PaymentLineAllocation {
+  allocation_code: string
+  amount: number
+}
+
 export interface PaymentLine {
   id: string
   gl_account_id: string
   amount: number
+  allocations?: PaymentLineAllocation[]
 }
 
 export type PaymentStatus = 'draft' | 'submitted' | 'approved' | 'posted' | 'cancelled'
@@ -51,7 +57,9 @@ export function paymentToLedgerEntries(payment: Payment) {
       account_id: l.gl_account_id,
       debit: 0,
       credit: l.amount,
-      description: payment.paid_to,
+      description: l.allocations && l.allocations.length > 0
+        ? `${payment.paid_to} (${l.allocations.map((a) => `${a.allocation_code}: $${a.amount.toFixed(2)}`).join(', ')})`
+        : payment.paid_to,
     })),
   ]
 }
