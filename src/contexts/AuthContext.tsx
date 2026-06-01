@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect, useRef, useCallback, type ReactNode } from 'react'
 import { signInWithEmail, signUpWithEmail, signInWithGoogle, signInWithApple, signOut, getCurrentSession, type AuthUser } from '../lib/auth'
+import { registerSession, heartbeatSession, removeSession } from '../lib/sessionTracker'
 
 interface AuthContextType {
   user: AuthUser | null
@@ -51,14 +52,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const data = await signInWithEmail(email, password)
     const u = data.user
     if (u) {
-      setUser({
+      const resolved: AuthUser = {
         id: u.id,
         email: u.email ?? '',
         name: u.user_metadata?.name ?? u.email ?? '',
         avatar_url: u.user_metadata?.avatar_url ?? null,
         role: resolveRole(u.email ?? '', u.user_metadata as Record<string, unknown> | undefined),
-      })
+      }
+      setUser(resolved)
       setSessionFlag()
+      registerSession(resolved)
     }
   }
 
@@ -66,13 +69,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const data = await signUpWithEmail(email, password, name)
     const u = data.user
     if (u) {
-      setUser({
+      const resolved: AuthUser = {
         id: u.id,
         email: u.email ?? '',
         name: name,
         avatar_url: null,
         role: resolveRole(email),
-      })
+      }
+      setUser(resolved)
+      registerSession(resolved)
     }
   }
 
@@ -88,17 +93,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const clearSessionFlag = () => localStorage.removeItem('tolmai_session')
 
   const loginAsDemo = useCallback(() => {
-    setUser({
+    const demoUser: AuthUser = {
       id: 'demo-user',
       email: 'demo@tolmai.app',
       name: 'Demo User',
       avatar_url: null,
       role: 'Superuser',
-    })
+    }
+    setUser(demoUser)
     setSessionFlag()
+    registerSession(demoUser)
   }, [])
 
   const logout = useCallback(async () => {
+    if (user) removeSession(user.id)
     await signOut()
     setUser(null)
     clearSessionFlag()
@@ -106,16 +114,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       clearTimeout(idleRef.current)
       idleRef.current = null
     }
-  }, [])
+  }, [user])
 
   logoutRef.current = logout
 
   const resetIdleTimer = useCallback(() => {
     if (idleRef.current) clearTimeout(idleRef.current)
+    if (user) heartbeatSession(user.id)
     idleRef.current = setTimeout(() => {
       logoutRef.current?.()
     }, IDLE_TIMEOUT)
-  }, [])
+  }, [user])
 
   useEffect(() => {
     if (!user) {

@@ -108,6 +108,7 @@ export function useExpenseTypeReport() {
       setRows(result)
       setTotalAmount(result.reduce((s, r) => s + r.amount, 0))
       setIsDemo(true)
+      setError(null)
       setLoading(false)
       return
     }
@@ -118,53 +119,112 @@ export function useExpenseTypeReport() {
       setLoading(false)
       return
     }
+    const accId = glAccount.id
+    const accName = glAccount.name
 
     const results: ExpenseTypeReportRow[] = []
 
     async function fetchPayments() {
       try {
-        const { data } = await supabase!
+        const { data: payments } = await supabase!
+          .from('payments')
+          .select('id, voucher_number, date')
+          .eq('period_id', periodId)
+        if (!payments || payments.length === 0) return
+        const paymentIds = payments.map(p => p.id)
+
+        const { data: lines } = await supabase!
+          .from('payment_lines')
+          .select('id, payment_id')
+          .in('payment_id', paymentIds)
+          .eq('gl_account_id', accId)
+        if (!lines || lines.length === 0) return
+        const lineIds = lines.map(l => l.id)
+        const linePaymentMap = new Map(lines.map(l => [l.id, l.payment_id]))
+
+        const { data: allocs } = await supabase!
           .from('payment_line_allocations')
-          .select('expense_type, amount, payment_line:payment_lines!inner(payment_id, gl_account_id, payment:payments!inner(voucher_number, date, period_id))')
-          .eq('payment_line.payment.period_id', periodId)
-          .eq('payment_line.gl_account_id', glAccount.id)
+          .select('expense_type, amount, payment_line_id')
+          .in('payment_line_id', lineIds)
           .eq('allocation_code', allocCode)
-        if (!data) return
-        for (const a of data as any[]) {
-          const p = a.payment_line.payment
-          results.push({ date: p.date, doc_type: 'Payment', doc_number: p.voucher_number, gl_code: glCode, gl_name: glAccount.name, allocation_code: allocCode, expense_type: a.expense_type ?? '', amount: Number(a.amount) })
+        if (!allocs) return
+
+        const paymentMap = new Map(payments.map(p => [p.id, p]))
+        for (const a of allocs) {
+          const pid = linePaymentMap.get(a.payment_line_id)
+          const p = pid ? paymentMap.get(pid) : undefined
+          if (!p) continue
+          results.push({ date: p.date, doc_type: 'Payment', doc_number: p.voucher_number, gl_code: glCode, gl_name: accName, allocation_code: allocCode, expense_type: a.expense_type ?? '', amount: Number(a.amount) })
         }
       } catch {}
     }
 
     async function fetchReceipts() {
       try {
-        const { data } = await supabase!
+        const { data: receipts } = await supabase!
+          .from('receipts')
+          .select('id, voucher_number, date')
+          .eq('period_id', periodId)
+        if (!receipts || receipts.length === 0) return
+        const receiptIds = receipts.map(r => r.id)
+
+        const { data: lines } = await supabase!
+          .from('receipt_lines')
+          .select('id, receipt_id')
+          .in('receipt_id', receiptIds)
+          .eq('gl_account_id', accId)
+        if (!lines || lines.length === 0) return
+        const lineIds = lines.map(l => l.id)
+        const lineReceiptMap = new Map(lines.map(l => [l.id, l.receipt_id]))
+
+        const { data: allocs } = await supabase!
           .from('receipt_line_allocations')
-          .select('expense_type, amount, receipt_line:receipt_lines!inner(receipt_id, gl_account_id, receipt:receipts!inner(voucher_number, date, period_id))')
-          .eq('receipt_line.receipt.period_id', periodId)
-          .eq('receipt_line.gl_account_id', glAccount.id)
+          .select('expense_type, amount, receipt_line_id')
+          .in('receipt_line_id', lineIds)
           .eq('allocation_code', allocCode)
-        if (!data) return
-        for (const a of data as any[]) {
-          const r = a.receipt_line.receipt
-          results.push({ date: r.date, doc_type: 'Receipt', doc_number: r.voucher_number, gl_code: glCode, gl_name: glAccount.name, allocation_code: allocCode, expense_type: a.expense_type ?? '', amount: Number(a.amount) })
+        if (!allocs) return
+
+        const receiptMap = new Map(receipts.map(r => [r.id, r]))
+        for (const a of allocs) {
+          const rid = lineReceiptMap.get(a.receipt_line_id)
+          const r = rid ? receiptMap.get(rid) : undefined
+          if (!r) continue
+          results.push({ date: r.date, doc_type: 'Receipt', doc_number: r.voucher_number, gl_code: glCode, gl_name: accName, allocation_code: allocCode, expense_type: a.expense_type ?? '', amount: Number(a.amount) })
         }
       } catch {}
     }
 
     async function fetchJournalEntries() {
       try {
-        const { data } = await supabase!
+        const { data: entries } = await supabase!
+          .from('journal_entries')
+          .select('id, entry_number, posting_date')
+          .eq('period_id', periodId)
+        if (!entries || entries.length === 0) return
+        const entryIds = entries.map(e => e.id)
+
+        const { data: items } = await supabase!
+          .from('journal_entry_items')
+          .select('id, journal_entry_id')
+          .in('journal_entry_id', entryIds)
+          .eq('account_id', accId)
+        if (!items || items.length === 0) return
+        const itemIds = items.map(i => i.id)
+        const itemEntryMap = new Map(items.map(i => [i.id, i.journal_entry_id]))
+
+        const { data: allocs } = await supabase!
           .from('journal_entry_item_allocations')
-          .select('expense_type, amount, item:journal_entry_items!inner(journal_entry_id, account_id, entry:journal_entries!inner(entry_number, posting_date, period_id))')
-          .eq('item.entry.period_id', periodId)
-          .eq('item.account_id', glAccount.id)
+          .select('expense_type, amount, journal_entry_item_id')
+          .in('journal_entry_item_id', itemIds)
           .eq('allocation_code', allocCode)
-        if (!data) return
-        for (const a of data as any[]) {
-          const e = a.item.entry
-          results.push({ date: e.posting_date, doc_type: 'Journal Entry', doc_number: e.entry_number, gl_code: glCode, gl_name: glAccount.name, allocation_code: allocCode, expense_type: a.expense_type ?? '', amount: Number(a.amount) })
+        if (!allocs) return
+
+        const entryMap = new Map(entries.map(e => [e.id, e]))
+        for (const a of allocs) {
+          const eid = itemEntryMap.get(a.journal_entry_item_id)
+          const e = eid ? entryMap.get(eid) : undefined
+          if (!e) continue
+          results.push({ date: e.posting_date, doc_type: 'Journal Entry', doc_number: e.entry_number, gl_code: glCode, gl_name: accName, allocation_code: allocCode, expense_type: a.expense_type ?? '', amount: Number(a.amount) })
         }
       } catch {}
     }
@@ -179,10 +239,12 @@ export function useExpenseTypeReport() {
       setRows(result)
       setTotalAmount(result.reduce((s, r) => s + r.amount, 0))
       setIsDemo(true)
+      setError('No matching data found in Supabase for the selected filters. Showing sample demo data instead.')
     } else {
       setRows(results)
       setTotalAmount(results.reduce((s, r) => s + r.amount, 0))
       setIsDemo(false)
+      setError(null)
     }
     setLoading(false)
   }, [])

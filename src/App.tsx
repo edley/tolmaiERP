@@ -13,12 +13,14 @@ import { Login } from './pages/Login'
 import { Signup } from './pages/Signup'
 import { Settings } from './pages/Settings'
 import { UserManagement } from './pages/UserManagement'
+import { UserSession } from './pages/UserSession'
 import { AccountingPeriods } from './pages/AccountingPeriods'
 import { TrialBalance } from './pages/TrialBalance'
 import { AllocationMappings } from './pages/AllocationMappings'
 import { AllocationTypes } from './pages/AllocationTypes'
 import { AllocationReportAnalysis } from './pages/AllocationReportAnalysis/AllocationReportAnalysis'
 import { ExpenseTypeAnalysis } from './pages/ExpenseTypeAnalysis'
+import { PendingPosting } from './pages/PendingPosting'
 
 function App() {
   return (
@@ -31,6 +33,7 @@ function App() {
             <Route path="/" element={<Dashboard />} />
             <Route path="/accounts" element={<ChartOfAccounts />} />
             <Route path="/journal-entries" element={<JournalEntries />} />
+            <Route path="/pending-posting" element={<PendingPosting />} />
             <Route path="/general-ledger" element={<GeneralLedger />} />
             <Route path="/payments" element={<Payments />} />
             <Route path="/receipts" element={<Receipts />} />
@@ -43,6 +46,7 @@ function App() {
             <Route path="/allocation-types" element={<AllocationTypes />} />
             <Route path="/accounting-periods" element={<AccountingPeriods />} />
             <Route path="/usermgmt" element={<UserManagement />} />
+            <Route path="/user-sessions" element={<UserSession />} />
           </Route>
         </Route>
       </Routes>

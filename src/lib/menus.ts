@@ -46,6 +46,14 @@ export const ALL_MENUS: MenuItem[] = [
     ],
   },
   {
+    key: 'eom',
+    label: 'EOM',
+    module: 'Accounting',
+    children: [
+      { key: 'pending-posting', label: 'Post to Ledger', route: '/pending-posting', module: 'Accounting' },
+    ],
+  },
+  {
     key: 'settings',
     label: 'Reference Data',
     module: 'Administration',
@@ -56,7 +64,15 @@ export const ALL_MENUS: MenuItem[] = [
       { key: 'accountingperiods',  label: 'Accounting Periods',  route: '/accounting-periods',   module: 'Administration' },
     ],
   },
-  { key: 'usermgmt',    label: 'User Management',    route: '/usermgmt',        module: 'Administration' },
+  {
+    key: 'usersettings',
+    label: 'Settings',
+    module: 'Administration',
+    children: [
+      { key: 'user-sessions', label: 'User Sessions',    route: '/user-sessions', module: 'Administration' },
+      { key: 'usermgmt',      label: 'User Management',  route: '/usermgmt',      module: 'Administration' },
+    ],
+  },
 ]
 
 const flatMenus: MenuDef[] = []

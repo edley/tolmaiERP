@@ -18,7 +18,7 @@ export function GeneralLedger() {
   const [endDate, setEndDate] = useState(currentPeriod?.end_date ?? '')
 
   const periodOptions = useMemo(() =>
-    periods.map((p) => ({ id: p.id, label: p.name, sublabel: `${p.start_date} — ${p.end_date}` })),
+    periods.map((p) => ({ id: p.id, label: p.name })),
     [periods]
   )
 

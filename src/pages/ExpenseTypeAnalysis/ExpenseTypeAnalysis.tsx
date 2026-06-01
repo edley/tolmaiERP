@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react'
+import { useState, useMemo, useCallback, useEffect } from 'react'
 import { BarChart3, Download } from 'lucide-react'
 import { useAccounts } from '../../hooks/useAccounts'
 import { useExpenseTypeReport } from '../../hooks/useExpenseTypeReport'
@@ -7,6 +7,7 @@ import { DataTable } from '../../components/DataTable'
 import { DemoBanner } from '../../components/DemoBanner'
 import { PageLayout } from '../../components/PageLayout'
 import { getMappings } from '../../lib/allocationMappings'
+import { supabase, isOnline } from '../../lib/supabase'
 import { exportToExcel } from '../../lib/exportToExcel'
 import type { ExpenseTypeReportRow } from '../../hooks/useExpenseTypeReport'
 
@@ -18,6 +19,7 @@ export function ExpenseTypeAnalysis() {
   const [selectedPeriodId, setSelectedPeriodId] = useState(currentPeriod?.id ?? '')
   const [selectedGlCode, setSelectedGlCode] = useState('')
   const [selectedAllocCode, setSelectedAllocCode] = useState('')
+  const [supabaseCodes, setSupabaseCodes] = useState<string[]>([])
 
   const allMappings = useMemo(() => {
     if (accounts.length === 0) return []
@@ -29,13 +31,37 @@ export function ExpenseTypeAnalysis() {
     [accounts]
   )
 
+  useEffect(() => {
+    if (!selectedGlCode || !isOnline() || !supabase) {
+      setSupabaseCodes([])
+      return
+    }
+    const glAccount = accounts.find((a) => a.code === selectedGlCode)
+    if (!glAccount) { setSupabaseCodes([]); return }
+    const allCodes = new Set<string>()
+    Promise.allSettled([
+      supabase.from('payment_line_allocations').select('allocation_code, payment_line:payment_lines!inner(gl_account_id)').eq('payment_line.gl_account_id', glAccount.id),
+      supabase.from('receipt_line_allocations').select('allocation_code, receipt_line:receipt_lines!inner(gl_account_id)').eq('receipt_line.gl_account_id', glAccount.id),
+      supabase.from('journal_entry_item_allocations').select('allocation_code, item:journal_entry_items!inner(account_id)').eq('item.account_id', glAccount.id),
+    ]).then((results) => {
+      for (const r of results) {
+        if (r.status === 'fulfilled' && r.value.data) {
+          for (const row of r.value.data) {
+            if (row.allocation_code) allCodes.add(row.allocation_code)
+          }
+        }
+      }
+      setSupabaseCodes([...allCodes].sort())
+    })
+  }, [selectedGlCode, accounts])
+
   const allocCodeOptions = useMemo(() => {
     if (!selectedGlCode) return []
-    return allMappings
+    const local = allMappings
       .filter((m) => m.gl_code === selectedGlCode && m.active)
       .map((m) => m.allocation_code)
-      .sort()
-  }, [allMappings, selectedGlCode])
+    return [...new Set([...local, ...supabaseCodes])].sort()
+  }, [allMappings, selectedGlCode, supabaseCodes])
 
   const periodOptions = useMemo(() =>
     periods.map((p) => ({ id: p.id, label: p.name, sublabel: `${p.start_date} — ${p.end_date}${p.status === 'closed' ? ' (Closed)' : ''}` })),

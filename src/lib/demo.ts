@@ -347,7 +347,7 @@ export function buildDemoJournalEntries(accounts: Account[]): JournalEntry[] {
 export function buildDemoLedger(entries: JournalEntry[]): LedgerEntry[] {
   const result: LedgerEntry[] = []
   for (const je of entries) {
-    if (je.status !== 'submitted' || !je.items) continue
+    if ((je.status !== 'submitted' && je.status !== 'posted') || !je.items) continue
     for (const item of je.items) {
       result.push({
         id: uid(),

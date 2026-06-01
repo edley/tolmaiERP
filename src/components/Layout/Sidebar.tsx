@@ -31,7 +31,9 @@ const ICON_MAP: Record<string, typeof LayoutDashboard> = {
   settings: Settings,
   accountingperiods: Calendar,
   allocationmappings: Settings,
+  allocationtypes: Settings,
   usermgmt: Shield,
+  'user-sessions': Shield,
 }
 
 function SidebarGroup({ group }: { group: MenuGroup }) {
