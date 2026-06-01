@@ -44,6 +44,7 @@ export type JournalEntryStatus = 'draft' | 'submitted' | 'approved' | 'posted' |
 
 export interface JournalEntryItemAllocation {
   allocation_code: string
+  expense_type: string | null
   amount: number
 }
 
@@ -94,6 +95,18 @@ export interface AccountingPeriod {
   start_date: string
   end_date: string
   status: 'open' | 'closed'
+}
+
+export interface AllocationType {
+  id: string
+  gl_account_id: string | null
+  gl_code: string
+  name: string
+  description: string | null
+  active: boolean
+  created_at: string
+  updated_at: string
+  gl_account?: Account
 }
 
 export interface AllocationMapping {

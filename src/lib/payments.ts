@@ -1,5 +1,6 @@
 export interface PaymentLineAllocation {
   allocation_code: string
+  expense_type: string | null
   amount: number
 }
 
@@ -58,7 +59,7 @@ export function paymentToLedgerEntries(payment: Payment) {
       debit: 0,
       credit: l.amount,
       description: l.allocations && l.allocations.length > 0
-        ? `${payment.paid_to} (${l.allocations.map((a) => `${a.allocation_code}: $${a.amount.toFixed(2)}`).join(', ')})`
+        ? `${payment.paid_to} (${l.allocations.map((a) => a.expense_type ? `${a.allocation_code}·${a.expense_type}: $${a.amount.toFixed(2)}` : `${a.allocation_code}: $${a.amount.toFixed(2)}`).join(', ')})`
         : payment.paid_to,
     })),
   ]

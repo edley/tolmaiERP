@@ -1,0 +1,1 @@
+export { ExpenseTypeAnalysis } from './ExpenseTypeAnalysis'

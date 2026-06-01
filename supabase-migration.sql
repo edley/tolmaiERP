@@ -384,15 +384,38 @@ DROP POLICY IF EXISTS "Enable all access on payment_line_allocations" ON payment
 CREATE POLICY "Enable all access on payment_line_allocations"
   ON payment_line_allocations FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
 
+ALTER TABLE payment_line_allocations ADD COLUMN IF NOT EXISTS expense_type TEXT;
+
 CREATE INDEX IF NOT EXISTS idx_payment_line_allocations_line ON payment_line_allocations(payment_line_id);
 
 -- ============================================================
--- 17. Receipt Line Allocations
+-- 17. Expense Types table
+-- ============================================================
+CREATE TABLE IF NOT EXISTS expense_types (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  gl_account_id UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  active BOOLEAN DEFAULT TRUE,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE (gl_account_id, name)
+);
+
+ALTER TABLE expense_types ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Enable all access on expense_types" ON expense_types;
+CREATE POLICY "Enable all access on expense_types"
+  ON expense_types FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+
+CREATE INDEX IF NOT EXISTS idx_expense_types_account ON expense_types(gl_account_id);
+
+-- ============================================================
+-- 18. Receipt Line Allocations
 -- ============================================================
 CREATE TABLE IF NOT EXISTS receipt_line_allocations (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   receipt_line_id UUID NOT NULL REFERENCES receipt_lines(id) ON DELETE CASCADE,
   allocation_code TEXT NOT NULL,
+  expense_type TEXT,
   amount NUMERIC(16,2) NOT NULL DEFAULT 0,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -412,6 +435,7 @@ CREATE TABLE IF NOT EXISTS journal_entry_item_allocations (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   journal_entry_item_id UUID NOT NULL REFERENCES journal_entry_items(id) ON DELETE CASCADE,
   allocation_code TEXT NOT NULL,
+  expense_type TEXT,
   amount NUMERIC(16,2) NOT NULL DEFAULT 0,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );

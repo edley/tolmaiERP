@@ -49,7 +49,7 @@ export function JournalEntries() {
   const [actionError, setActionError] = useState<string | null>(null)
 
   const periodOptions = useMemo(() =>
-    periods.map((p) => ({ id: p.id, label: p.name, sublabel: `${p.start_date} — ${p.end_date}` })),
+    periods.map((p) => ({ id: p.id, label: p.name, sublabel: p.status === 'closed' ? 'Closed' : null })),
     [periods]
   )
 
@@ -126,7 +126,7 @@ export function JournalEntries() {
 
       <DemoBanner visible={false} error={null} />
 
-      <div className="flex items-center gap-3 mb-4 bg-white border border-[#dddbda] rounded-lg px-4 py-3 shadow-sm">
+      <div className="flex items-center gap-3 mb-4 bg-white border border-[#dddbda] rounded-lg px-4 py-3 shadow-sm flex-wrap">
         <svg className="w-4 h-4 text-[#514f4d]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <rect x="3" y="4" width="18" height="18" rx="2" strokeWidth="1.5" />
           <path strokeWidth="1.5" d="M3 10h18" />
@@ -144,9 +144,9 @@ export function JournalEntries() {
           />
         </div>
         {currentPeriod && (
-          <span className="text-xs text-[#514f4d]">
-            {currentPeriod.start_date} — {currentPeriod.end_date}
-            <span className={`ml-2 inline-flex px-1.5 py-0.5 text-[10px] font-semibold rounded ${
+          <span className="text-xs text-[#514f4d] flex items-center gap-2">
+            <span className="whitespace-nowrap">{currentPeriod.start_date} — {currentPeriod.end_date}</span>
+            <span className={`inline-flex px-1.5 py-0.5 text-[10px] font-semibold rounded ${
               currentPeriod.status === 'open' ? 'bg-[#e8f4fe] text-[#0070d2]' : 'bg-[#f3f3f3] text-[#514f4d]'
             }`}>
               {currentPeriod.status === 'open' ? 'Open' : 'Closed'}

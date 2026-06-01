@@ -16,7 +16,9 @@ import { UserManagement } from './pages/UserManagement'
 import { AccountingPeriods } from './pages/AccountingPeriods'
 import { TrialBalance } from './pages/TrialBalance'
 import { AllocationMappings } from './pages/AllocationMappings'
+import { AllocationTypes } from './pages/AllocationTypes'
 import { AllocationReportAnalysis } from './pages/AllocationReportAnalysis/AllocationReportAnalysis'
+import { ExpenseTypeAnalysis } from './pages/ExpenseTypeAnalysis'
 
 function App() {
   return (
@@ -34,9 +36,11 @@ function App() {
             <Route path="/receipts" element={<Receipts />} />
             <Route path="/trial-balance" element={<TrialBalance />} />
             <Route path="/allocation-report-analysis" element={<AllocationReportAnalysis />} />
+            <Route path="/expense-type-analysis" element={<ExpenseTypeAnalysis />} />
             <Route path="/reports" element={<FinancialReports />} />
             <Route path="/settings" element={<Settings />} />
             <Route path="/allocation-mappings" element={<AllocationMappings />} />
+            <Route path="/allocation-types" element={<AllocationTypes />} />
             <Route path="/accounting-periods" element={<AccountingPeriods />} />
             <Route path="/usermgmt" element={<UserManagement />} />
           </Route>

@@ -26,16 +26,16 @@ export function usePayments() {
         console.error('Failed to fetch payments:', error.message)
       } else if (data && data.length > 0) {
         // Try to fetch allocations separately (best-effort)
-        let allocMap: Record<string, { allocation_code: string; amount: number }[]> = {}
+        let allocMap: Record<string, { allocation_code: string; expense_type: string | null; amount: number }[]> = {}
         try {
           const { data: allocData } = await supabase
             .from('payment_line_allocations')
-            .select('payment_line_id, allocation_code, amount')
+            .select('payment_line_id, allocation_code, expense_type, amount')
           if (allocData) {
             for (const a of allocData as any[]) {
               const lineId = a.payment_line_id
               if (!allocMap[lineId]) allocMap[lineId] = []
-              allocMap[lineId].push({ allocation_code: a.allocation_code, amount: Number(a.amount) })
+              allocMap[lineId].push({ allocation_code: a.allocation_code, expense_type: a.expense_type ?? null, amount: Number(a.amount) })
             }
           }
         } catch { /* allocations table may not exist */ }
@@ -140,6 +140,7 @@ export function usePayments() {
         (l.allocations ?? []).map((a) => ({
           payment_line_id: l.id,
           allocation_code: a.allocation_code,
+          expense_type: a.expense_type ?? null,
           amount: a.amount,
         }))
       )

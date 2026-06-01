@@ -1,5 +1,6 @@
 export interface ReceiptLineAllocation {
   allocation_code: string
+  expense_type: string | null
   amount: number
 }
 

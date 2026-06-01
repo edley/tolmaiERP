@@ -42,6 +42,7 @@ export const ALL_MENUS: MenuItem[] = [
       { key: 'trialbalance', label: 'Trial Balance',      route: '/trial-balance',                module: 'Reporting' },
       { key: 'reports',      label: 'Financial Reports',   route: '/reports',                      module: 'Reporting' },
       { key: 'allocation-report-analysis', label: 'Allocation Report Analysis', route: '/allocation-report-analysis', module: 'Reporting' },
+      { key: 'expense-type-analysis',    label: 'Expense Type Analysis',     route: '/expense-type-analysis',    module: 'Reporting' },
     ],
   },
   {
@@ -51,6 +52,7 @@ export const ALL_MENUS: MenuItem[] = [
     children: [
       { key: 'accountant',       label: 'Chart of Accounts',    route: '/accounts',             module: 'Administration' },
       { key: 'allocationmappings', label: 'Allocation Codes', route: '/allocation-mappings',  module: 'Administration' },
+      { key: 'allocationtypes',    label: 'Allocation Types', route: '/allocation-types',     module: 'Administration' },
       { key: 'accountingperiods',  label: 'Accounting Periods',  route: '/accounting-periods',   module: 'Administration' },
     ],
   },

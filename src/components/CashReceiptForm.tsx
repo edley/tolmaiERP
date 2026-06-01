@@ -8,14 +8,21 @@ import { LookupField } from './LookupField'
 import { EditableNumber } from './EditableNumber'
 import { Modal } from './Modal'
 import { getMappings } from '../lib/allocationMappings'
+import { getTypesForGlCode } from '../lib/allocationTypes'
 import { usePeriod } from '../contexts/PeriodContext'
 import type { Receipt } from '../lib/receipts'
+
+interface LineAlloc {
+  code: string
+  expenseType: string
+  amount: string
+}
 
 interface Line {
   id: number
   gl_account_id: string
   amount: string
-  allocations: { code: string; amount: string }[]
+  allocations: LineAlloc[]
 }
 
 interface CashReceiptFormProps {
@@ -45,7 +52,7 @@ export function CashReceiptForm({ onClose, onSuccess, receipt }: CashReceiptForm
       id: i + 1,
       gl_account_id: l.gl_account_id,
       amount: String(l.amount),
-      allocations: (l.allocations ?? []).map((a) => ({ code: a.allocation_code, amount: String(a.amount) })),
+      allocations: (l.allocations ?? []).map((a) => ({ code: a.allocation_code, expenseType: a.expense_type ?? '', amount: String(a.amount) })),
     })),
     [receipt]
   )
@@ -126,10 +133,10 @@ export function CashReceiptForm({ onClose, onSuccess, receipt }: CashReceiptForm
     setLines(lines.map((l) => (l.id === id ? { ...l, [field]: value } : l)))
   }
 
-  const updateAlloc = (lineId: number, code: string, amount: string) => {
+  const updateAlloc = (lineId: number, index: number, amount: string) => {
     setLines(lines.map((l) =>
       l.id === lineId
-        ? { ...l, allocations: l.allocations.map((a) => a.code === code ? { ...a, amount } : a) }
+        ? { ...l, allocations: l.allocations.map((a, i) => i === index ? { ...a, amount } : a) }
         : l
     ))
   }
@@ -137,23 +144,45 @@ export function CashReceiptForm({ onClose, onSuccess, receipt }: CashReceiptForm
   const openAllocModal = (lineId: number) => {
     const line = lines.find((l) => l.id === lineId)
     if (!line) return
-    const glAccount = accounts.find((a) => a.id === line.gl_account_id)
-    if (!glAccount || !glAccount.code) return
-
-    const codes = allMappings
-      .filter((m) => m.gl_code === glAccount.code && m.active)
-      .map((m) => m.allocation_code)
-
-    const existing = new Map(line.allocations.map((a) => [a.code, a.amount]))
-    for (const code of codes) {
-      if (!existing.has(code)) existing.set(code, '0')
-    }
-
     setAllocLineId(lineId)
     setAllocError(null)
+    if (line.allocations.length === 0) {
+      setLines(lines.map((l) =>
+        l.id === lineId
+          ? { ...l, allocations: [{ code: '', expenseType: '', amount: '0' }] }
+          : l
+      ))
+    }
+  }
+
+  const addAllocRow = (lineId: number) => {
     setLines(lines.map((l) =>
       l.id === lineId
-        ? { ...l, allocations: Array.from(existing.entries()).map(([c, amt]) => ({ code: c, amount: amt })) }
+        ? { ...l, allocations: [...l.allocations, { code: '', expenseType: '', amount: '0' }] }
+        : l
+    ))
+  }
+
+  const removeAllocRow = (lineId: number, index: number) => {
+    setLines(lines.map((l) =>
+      l.id === lineId
+        ? { ...l, allocations: l.allocations.filter((_, i) => i !== index) }
+        : l
+    ))
+  }
+
+  const changeAllocCode = (lineId: number, index: number, code: string) => {
+    setLines(lines.map((l) =>
+      l.id === lineId
+        ? { ...l, allocations: l.allocations.map((a, i) => i === index ? { ...a, code } : a) }
+        : l
+    ))
+  }
+
+  const changeAllocType = (lineId: number, index: number, expenseType: string) => {
+    setLines(lines.map((l) =>
+      l.id === lineId
+        ? { ...l, allocations: l.allocations.map((a, i) => i === index ? { ...a, expenseType } : a) }
         : l
     ))
   }
@@ -207,6 +236,7 @@ export function CashReceiptForm({ onClose, onSuccess, receipt }: CashReceiptForm
           .filter((a) => parseFloat(a.amount) > 0)
           .map((a) => ({
             allocation_code: a.code,
+            expense_type: a.expenseType || null,
             amount: parseFloat(a.amount) || 0,
           })),
       }))
@@ -522,6 +552,11 @@ export function CashReceiptForm({ onClose, onSuccess, receipt }: CashReceiptForm
           const glAccount = accounts.find((a) => a.id === line.gl_account_id)
           const lineAmount = parseFloat(line.amount) || 0
           const totalAlloc = line.allocations.reduce((s, a) => s + (parseFloat(a.amount) || 0), 0)
+          const allocTypes = glAccount?.code ? getTypesForGlCode(glAccount.code, accounts) : []
+          const hasTypes = allocTypes.length > 0
+          const codeOptions = glAccount?.code
+            ? allMappings.filter((m) => m.gl_code === glAccount.code && m.active).map((m) => m.allocation_code)
+            : []
           return (
             <div className="space-y-4">
               {allocError && (
@@ -533,33 +568,69 @@ export function CashReceiptForm({ onClose, onSuccess, receipt }: CashReceiptForm
                 <span className="font-mono font-medium text-[#16325c]">Line amount: ${lineAmount.toFixed(2)}</span>
               </div>
               <div className="space-y-2">
-                <div className="grid grid-cols-[1fr_120px] gap-2 text-[10px] font-bold text-[#514f4d] uppercase tracking-wider px-1">
+                <div className={`grid ${hasTypes ? 'grid-cols-[1fr_1fr_100px_28px]' : 'grid-cols-[1fr_100px_28px]'} gap-2 text-[10px] font-bold text-[#514f4d] uppercase tracking-wider px-1`}>
                   <span>Allocation Code</span>
+                  {hasTypes && <span>Type</span>}
                   <span className="text-right">Amount</span>
+                  <span></span>
                 </div>
-                {line.allocations.length === 0 && (
+                {codeOptions.length === 0 && line.allocations.length === 0 && (
                   <div className="text-sm text-slate-400 text-center py-4">
                     No allocation codes found for this GL account.
                   </div>
                 )}
-                {line.allocations.map((a) => (
-                  <div key={a.code} className="grid grid-cols-[1fr_120px] gap-2 items-center">
-                    <span className="inline-flex px-2 py-0.5 text-[11px] font-bold bg-[#e8f4fe] text-[#0070d2] rounded justify-self-start">
-                      {a.code}
-                    </span>
+                {line.allocations.map((a, idx) => (
+                  <div key={idx} className={`grid ${hasTypes ? 'grid-cols-[1fr_1fr_100px_28px]' : 'grid-cols-[1fr_100px_28px]'} gap-2 items-center`}>
+                    <select
+                      value={a.code}
+                      onChange={(e) => changeAllocCode(line.id, idx, e.target.value)}
+                      className="w-full h-8 px-2 text-xs border border-[#dddbda] rounded text-[#16325c] bg-white hover:border-[#0070d2] focus:border-[#0070d2] focus:ring-1 focus:ring-[#0070d2] focus:outline-none"
+                    >
+                      <option value="">— Select —</option>
+                      {codeOptions.map((c) => (
+                        <option key={c} value={c}>{c}</option>
+                      ))}
+                    </select>
+                    {hasTypes && (
+                      <select
+                        value={a.expenseType}
+                        onChange={(e) => changeAllocType(line.id, idx, e.target.value)}
+                        className="w-full h-8 px-2 text-xs border border-[#dddbda] rounded text-[#16325c] bg-white hover:border-[#0070d2] focus:border-[#0070d2] focus:ring-1 focus:ring-[#0070d2] focus:outline-none"
+                      >
+                        {allocTypes.map((t) => (
+                          <option key={t} value={t}>{t}</option>
+                        ))}
+                      </select>
+                    )}
                     <div className="relative">
                       <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-slate-400">$</span>
                       <input
                         type="number" step="0.01" min="0"
                         value={a.amount}
-                        onChange={(e) => { updateAlloc(line.id, a.code, e.target.value); setAllocError(null) }}
+                        onChange={(e) => { updateAlloc(line.id, idx, e.target.value); setAllocError(null) }}
                         className="w-full h-8 pl-5 pr-2.5 text-sm border border-[#dddbda] rounded text-[#16325c] font-mono text-right hover:border-[#0070d2] focus:border-[#0070d2] focus:ring-1 focus:ring-[#0070d2] focus:outline-none"
                         placeholder="0.00"
                       />
                     </div>
+                    <button
+                      type="button"
+                      onClick={() => removeAllocRow(line.id, idx)}
+                      className="flex items-center justify-center w-7 h-7 text-[#c23934] hover:bg-[#fef0f0] rounded transition-colors"
+                      title="Remove"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
                   </div>
                 ))}
               </div>
+              <button
+                type="button"
+                onClick={() => addAllocRow(line.id)}
+                className="w-full py-2 text-xs font-semibold text-[#0070d2] bg-[#e8f4fe] rounded hover:bg-[#d0ebfb] transition-colors inline-flex items-center justify-center gap-1.5"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                Add Allocation
+              </button>
               <div className="flex items-center justify-between pt-2 border-t border-slate-100">
                 <span className={`text-xs font-semibold ${Math.abs(totalAlloc - lineAmount) < 0.01 ? 'text-[#007a33]' : 'text-[#c23934]'}`}>
                   Total allocated: <span className="font-mono">${totalAlloc.toFixed(2)}</span>

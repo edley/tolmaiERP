@@ -57,7 +57,6 @@ export function DataTable<T extends object>({
         ref={tableRef}
         className="overflow-auto"
         style={{
-          maxHeight: 'calc(100vh - 280px)',
           scrollbarColor: '#c9c7c5 #f3f3f3',
           scrollbarWidth: 'auto',
         }}

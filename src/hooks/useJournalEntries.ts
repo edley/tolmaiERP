@@ -26,16 +26,16 @@ export function useJournalEntries() {
         console.error('Failed to fetch journal entries:', error.message)
       } else if (data && data.length > 0) {
         // Try to fetch allocations separately (best-effort)
-        let allocMap: Record<string, { allocation_code: string; amount: number }[]> = {}
+        let allocMap: Record<string, { allocation_code: string; expense_type: string | null; amount: number }[]> = {}
         try {
           const { data: allocData } = await supabase
             .from('journal_entry_item_allocations')
-            .select('journal_entry_item_id, allocation_code, amount')
+            .select('journal_entry_item_id, allocation_code, expense_type, amount')
           if (allocData) {
             for (const a of allocData as any[]) {
               const itemId = a.journal_entry_item_id
               if (!allocMap[itemId]) allocMap[itemId] = []
-              allocMap[itemId].push({ allocation_code: a.allocation_code, amount: Number(a.amount) })
+              allocMap[itemId].push({ allocation_code: a.allocation_code, expense_type: a.expense_type ?? null, amount: Number(a.amount) })
             }
           }
         } catch { /* allocations table may not exist */ }
@@ -72,6 +72,12 @@ export function useJournalEntries() {
             allocations: allocMap[item.id] ?? [],
           })),
         }))
+        const remoteIds = new Set(mapped.map((e) => e.id))
+        const localOnly = (demoEntries ?? []).filter((e) => !remoteIds.has(e.id))
+        if (localOnly.length > 0) {
+          mapped.push(...localOnly)
+          mapped.sort((a, b) => b.posting_date.localeCompare(a.posting_date) || b.created_at.localeCompare(a.created_at))
+        }
         setEntries(mapped)
         demoEntries = mapped
         nextSeq.current = mapped.length + 1
@@ -147,6 +153,7 @@ export function useJournalEntries() {
         (item.allocations ?? []).map((a) => ({
           journal_entry_item_id: item.id,
           allocation_code: a.allocation_code,
+          expense_type: a.expense_type ?? null,
           amount: a.amount,
         }))
       )
@@ -166,7 +173,11 @@ export function useJournalEntries() {
     demoEntries = (demoEntries ?? []).map((e) => (e.id === entry.id ? entry : e))
     setEntries([...demoEntries])
     if (items) {
-      await persistToDb(entry, items)
+      try {
+        await persistToDb(entry, items)
+      } catch (err) {
+        console.warn('Entry updated locally but failed to persist to DB:', err)
+      }
     }
   }, [persistToDb])
 
@@ -204,7 +215,11 @@ export function useJournalEntries() {
     saveJournalEntry(entry)
     demoEntries = [entry, ...(demoEntries ?? [])]
     setEntries([...demoEntries])
-    await persistToDb(entry, entryItems)
+    try {
+      await persistToDb(entry, entryItems)
+    } catch (err) {
+      console.warn('Journal entry saved locally but failed to persist to DB:', err)
+    }
     return entry
   }, [persistToDb, user])
 
