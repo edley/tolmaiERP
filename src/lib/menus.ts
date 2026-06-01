@@ -33,10 +33,17 @@ export const ALL_MENUS: MenuItem[] = [
       { key: 'receipts',    label: 'Receipts',          route: '/receipts',        module: 'Accounting' },
     ],
   },
-  { key: 'ledger',      label: 'General Ledger',    route: '/general-ledger',  module: 'Accounting' },
-  { key: 'trialbalance', label: 'Trial Balance',     route: '/trial-balance',   module: 'Accounting' },
-  { key: 'reports',      label: 'Financial Reports',  route: '/reports',         module: 'Reports' },
-  { key: 'allocation-report-analysis', label: 'Allocation Report Analysis', route: '/allocation-report-analysis', module: 'Reports' },
+  {
+    key: 'reporting',
+    label: 'Reporting',
+    module: 'Reporting',
+    children: [
+      { key: 'ledger',      label: 'General Ledger',     route: '/general-ledger',               module: 'Reporting' },
+      { key: 'trialbalance', label: 'Trial Balance',      route: '/trial-balance',                module: 'Reporting' },
+      { key: 'reports',      label: 'Financial Reports',   route: '/reports',                      module: 'Reporting' },
+      { key: 'allocation-report-analysis', label: 'Allocation Report Analysis', route: '/allocation-report-analysis', module: 'Reporting' },
+    ],
+  },
   {
     key: 'settings',
     label: 'Reference Data',
