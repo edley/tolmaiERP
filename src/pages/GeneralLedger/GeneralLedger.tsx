@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useCallback } from 'react'
 import { Search, Download } from 'lucide-react'
 import { useLedger } from '../../hooks/useLedger'
 import { useAccounts } from '../../hooks/useAccounts'
@@ -7,6 +7,7 @@ import { DataTable } from '../../components/DataTable'
 import { DemoBanner } from '../../components/DemoBanner'
 import { PageLayout } from '../../components/PageLayout'
 import { LookupField } from '../../components/LookupField'
+import { exportToExcel } from '../../lib/exportToExcel'
 import type { LedgerEntry } from '../../types'
 
 export function GeneralLedger() {
@@ -40,13 +41,39 @@ export function GeneralLedger() {
     refetch()
   }
 
+  const handleExport = useCallback(() => {
+    if (entries.length === 0) return
+    const accountLabel = selectedAccount
+      ? accounts.find((a) => a.id === selectedAccount)?.code ?? 'account'
+      : 'all'
+    exportToExcel(
+      entries,
+      [
+        { header: 'Date', accessor: (r) => new Date(r.posting_date).toLocaleDateString('en-GB') },
+        { header: 'Account', accessor: (r) => {
+          const acc = r.account as unknown as { name: string; code: string } | undefined
+          return acc ? `${acc.name} (${acc.code})` : 'Unknown'
+        }},
+        { header: 'Description', accessor: (r) => r.description || '-' },
+        { header: 'Debit', accessor: (r) => r.debit },
+        { header: 'Credit', accessor: (r) => r.credit },
+        { header: 'Balance', accessor: (r) => r.balance },
+      ],
+      `general-ledger-${accountLabel}`
+    )
+  }, [entries, selectedAccount, accounts])
+
   return (
     <PageLayout
       title="General Ledger"
       description="Comprehensive view of all ledger postings"
       docType="ledger_entry"
       actions={
-        <button className="h-8 px-4 text-sm font-semibold text-white bg-[#0070d2] rounded hover:bg-[#005fb2] transition-colors inline-flex items-center gap-2">
+        <button
+          onClick={handleExport}
+          disabled={entries.length === 0}
+          className="h-8 px-4 text-sm font-semibold text-white bg-[#0070d2] rounded hover:bg-[#005fb2] disabled:opacity-50 disabled:cursor-not-allowed transition-colors inline-flex items-center gap-2"
+        >
           <Download className="w-4 h-4" />
           Export
         </button>

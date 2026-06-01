@@ -1,11 +1,12 @@
-import { useState, useMemo } from 'react'
-import { BarChart3 } from 'lucide-react'
+import { useState, useMemo, useCallback } from 'react'
+import { BarChart3, Download } from 'lucide-react'
 import { useAccounts } from '../../hooks/useAccounts'
 import { useAllocationReport } from '../../hooks/useAllocationReport'
 import { usePeriod } from '../../contexts/PeriodContext'
 import { DataTable } from '../../components/DataTable'
 import { DemoBanner } from '../../components/DemoBanner'
 import { PageLayout } from '../../components/PageLayout'
+import { exportToExcel } from '../../lib/exportToExcel'
 import type { AllocationReportRow } from '../../hooks/useAllocationReport'
 
 export function AllocationReportAnalysis() {
@@ -44,6 +45,25 @@ export function AllocationReportAnalysis() {
     return Array.from(map.entries()).sort((a, b) => b[1] - a[1])
   }, [rows])
 
+  const handleExport = useCallback(() => {
+    if (rows.length === 0) return
+    const prefix = activeTab === 'summary' ? 'allocation-summary' : 'allocation-detail'
+    const suffix = selectedGlCode ? `-${selectedGlCode}` : ''
+    exportToExcel(
+      rows,
+      [
+        { header: 'Date', accessor: (r) => r.date },
+        { header: 'Doc Type', accessor: (r) => r.doc_type },
+        { header: 'Document #', accessor: (r) => r.doc_number },
+        { header: 'GL Code', accessor: (r) => r.gl_code },
+        { header: 'GL Account', accessor: (r) => r.gl_name },
+        { header: 'Allocation Code', accessor: (r) => r.allocation_code },
+        { header: 'Amount', accessor: (r) => r.amount },
+      ],
+      `${prefix}${suffix}`
+    )
+  }, [rows, activeTab, selectedGlCode])
+
   const TABS: { key: 'detail' | 'summary'; label: string }[] = [
     { key: 'detail', label: 'Detail' },
     { key: 'summary', label: 'Summary' },
@@ -54,6 +74,17 @@ export function AllocationReportAnalysis() {
       title="Allocation Report Analysis"
       description="View allocation amounts by GL account and period"
       docType="allocation_mapping"
+      actions={
+        rows.length > 0 ? (
+          <button
+            onClick={handleExport}
+            className="h-8 px-4 text-sm font-semibold text-white bg-[#0070d2] rounded hover:bg-[#005fb2] transition-colors inline-flex items-center gap-2"
+          >
+            <Download className="w-4 h-4" />
+            Export
+          </button>
+        ) : undefined
+      }
     >
       <div className="flex flex-col" style={{ height: 'calc(100vh - 210px)' }}>
         {/* ── Fixed Header: Filters + Summary bar ── */}
