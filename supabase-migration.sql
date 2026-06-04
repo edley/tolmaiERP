@@ -572,8 +572,8 @@ SECURITY DEFINER SET search_path = ''
 AS $$
 BEGIN
   IF NOT EXISTS (
-    SELECT 1 FROM public.user_profiles
-    WHERE id = auth.uid() AND role = 'Superuser'
+    SELECT 1 FROM public.user_profiles up2
+    WHERE up2.id = auth.uid() AND up2.role = 'Superuser'
   ) THEN
     RAISE EXCEPTION 'Only superusers can list all user profiles';
   END IF;

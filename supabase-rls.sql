@@ -201,4 +201,4 @@ CREATE POLICY "Users can update their own profile" ON user_profiles
 DROP POLICY IF EXISTS "Superusers can update any profile" ON user_profiles;
 CREATE POLICY "Superusers can update any profile" ON user_profiles
   FOR UPDATE TO authenticated
-  USING (EXISTS (SELECT 1 FROM user_profiles WHERE id = auth.uid() AND role = 'Superuser'));
+  USING (EXISTS (SELECT 1 FROM user_profiles up WHERE up.id = auth.uid() AND up.role = 'Superuser'));
