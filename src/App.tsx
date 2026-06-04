@@ -20,6 +20,7 @@ import { UserSession } from './pages/UserSession'
 import { AuditTrailPage } from './pages/AuditTrail'
 import { ObjectManager } from './pages/ObjectManager'
 import { PaymentModes } from './pages/PaymentModes'
+import { MFAGate } from './components/MFA/MFAGate'
 import { AccountingPeriods } from './pages/AccountingPeriods'
 import { TrialBalance } from './pages/TrialBalance'
 import { AllocationMappings } from './pages/AllocationMappings'
@@ -38,6 +39,7 @@ function App() {
         <Route path="/signup" element={<Signup />} />
         <Route element={<ProtectedRoute />}>
             <Route path="/force-password-reset" element={<ForcePasswordReset />} />
+            <Route element={<MFAGate />}>
             <Route element={<ThemeProvider><CompanyProvider><PeriodProvider><Layout /></PeriodProvider></CompanyProvider></ThemeProvider>}>
             <Route path="/" element={<Dashboard />} />
             <Route path="/accounts" element={<ChartOfAccounts />} />
@@ -61,6 +63,7 @@ function App() {
             <Route path="/object-manager" element={<ObjectManager />} />
             <Route path="/companies" element={<Companies />} />
             <Route path="/bank-report" element={<BankReport />} />
+            </Route>
           </Route>
         </Route>
       </Routes>

@@ -28,6 +28,9 @@ A Frappe/ERPNext-inspired ERP built with React + Supabase.
 - **Company Badge** — `Company : {name}` shown in modal headers on all create/edit dialogs
 - **Excel Export** — Reports and list views support `.xlsx` download
 - **Audit Trail** — Immutable change log for journal entries, receipts, and payments
+- **Multi-Factor Authentication** — TOTP-based MFA via authenticator apps (Google Authenticator, Authy, 1Password); enrollment in Settings, automatic challenge on login
+- **Force Password Reset** — First-login password change requirement for new users
+- **Object Manager** — Superuser table browser with dynamic column discovery and search
 - **Demo Mode** — Offline-first with localStorage fallback when Supabase is not configured
 
 ## Setup
@@ -36,7 +39,6 @@ A Frappe/ERPNext-inspired ERP built with React + Supabase.
 2. Copy `.env.example` to `.env` and fill in your credentials:
    - `VITE_SUPABASE_URL` — Supabase project URL
    - `VITE_SUPABASE_ANON_KEY` — Supabase anon/public key
-   - `VITE_ADMIN_EMAIL` — Admin email for Superuser auto-detection
    - `VITE_SUPABASE_FUNCTIONS_URL` — Edge Functions base URL (optional, for waitlist email)
 3. Run `supabase-schema.sql` in Supabase SQL Editor (creates all tables + indexes + RLS policies)
 4. (Optional) Run `supabase-seed.sql` for sample data

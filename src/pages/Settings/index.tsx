@@ -5,6 +5,7 @@ import { useRBAC } from '../../hooks/useRBAC'
 import { PageLayout } from '../../components/PageLayout'
 import { getPermissions } from '../../lib/rbac'
 import { getMenuByKey, getModules } from '../../lib/menus'
+import { MFASettings } from '../../components/MFA/MFASettings'
 
 export function Settings() {
   const { user, isOnline } = useAuth()
@@ -154,6 +155,11 @@ export function Settings() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* MFA Settings */}
+      {isOnline && (
+        <MFASettings />
       )}
 
       {/* Demo notice */}
