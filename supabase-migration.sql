@@ -559,7 +559,7 @@ ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS company_id UUID REFERENCES co
 UPDATE user_profiles SET company_id = '00000000-0000-4000-8000-000000000001'::uuid WHERE company_id IS NULL;
 ALTER TABLE user_profiles ALTER COLUMN company_id SET NOT NULL;
 
--- RPC: List all user profiles (used by Superuser management page)
+-- RPC: List all user profiles (only Superusers can list all profiles)
 DROP FUNCTION IF EXISTS public.get_user_profiles();
 CREATE FUNCTION public.get_user_profiles()
 RETURNS TABLE (
@@ -567,12 +567,21 @@ RETURNS TABLE (
   created_at TIMESTAMPTZ, updated_at TIMESTAMPTZ,
   company_id UUID
 )
-LANGUAGE sql
+LANGUAGE plpgsql
 SECURITY DEFINER SET search_path = ''
 AS $$
-  SELECT up.id, up.email, up.name, up.role, up.created_at, up.updated_at, up.company_id
-  FROM public.user_profiles up
-  ORDER BY up.email;
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM public.user_profiles
+    WHERE id = auth.uid() AND role = 'Superuser'
+  ) THEN
+    RAISE EXCEPTION 'Only superusers can list all user profiles';
+  END IF;
+  RETURN QUERY
+    SELECT up.id, up.email, up.name, up.role, up.created_at, up.updated_at, up.company_id
+    FROM public.user_profiles up
+    ORDER BY up.email;
+END;
 $$;
 
 -- 20d. Add company_id to business tables (accounts, periods, references)

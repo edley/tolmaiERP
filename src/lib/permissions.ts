@@ -104,38 +104,26 @@ function initCrudFull(
 let currentCrud: Record<UserType, Record<DocType, Record<CrudOp, boolean>>> | null = null
 
 export function getCrud(): Record<UserType, Record<DocType, Record<CrudOp, boolean>>> {
-  if (currentCrud) return currentCrud!
-  try {
-    const stored = localStorage.getItem('rbac_crud')
-    if (stored) {
-      currentCrud = JSON.parse(stored) as Record<UserType, Record<DocType, Record<CrudOp, boolean>>>
-      return currentCrud!
-    }
-  } catch { /* ignore */ }
+  if (!currentCrud) {
+    currentCrud = structuredClone(DEFAULT_CRUD)
+  }
+  return currentCrud
+}
+
+export function resetCrud() {
   currentCrud = structuredClone(DEFAULT_CRUD)
-  return currentCrud!
-}
-
-export function saveCrud(perms: Record<UserType, Record<DocType, Record<CrudOp, boolean>>>) {
-  currentCrud = perms
-  localStorage.setItem('rbac_crud', JSON.stringify(perms))
-}
-
-export function canCrud(userType: UserType | null, docType: DocType, op: CrudOp): boolean {
-  if (!userType) return false
-  if (userType === 'Superuser') return true
-  const crud = getCrud()
-  return crud[userType]?.[docType]?.[op] ?? false
 }
 
 export function setCrudPerm(userType: UserType, docType: DocType, op: CrudOp, value: boolean) {
   if (userType === 'Superuser') return
   const crud = getCrud()
   crud[userType][docType][op] = value
-  saveCrud(crud)
 }
 
-export function resetCrud() {
-  currentCrud = structuredClone(DEFAULT_CRUD)
-  localStorage.setItem('rbac_crud', JSON.stringify(currentCrud))
+/** Check if a user type can perform a CRUD operation. Role is sourced from the DB — no localStorage override. */
+export function canCrud(userType: UserType | null, docType: DocType, op: CrudOp): boolean {
+  if (!userType) return false
+  if (userType === 'Superuser') return true
+  const crud = getCrud()
+  return crud[userType]?.[docType]?.[op] ?? false
 }

@@ -189,3 +189,16 @@ DROP POLICY IF EXISTS "Users can view their own profile" ON user_profiles;
 CREATE POLICY "Users can view their own profile" ON user_profiles
   FOR SELECT TO authenticated
   USING (id = auth.uid());
+
+-- Users can update their own profile (name, avatar_url, password_reset_required)
+DROP POLICY IF EXISTS "Users can update their own profile" ON user_profiles;
+CREATE POLICY "Users can update their own profile" ON user_profiles
+  FOR UPDATE TO authenticated
+  USING (id = auth.uid())
+  WITH CHECK (id = auth.uid());
+
+-- Superusers can update any profile
+DROP POLICY IF EXISTS "Superusers can update any profile" ON user_profiles;
+CREATE POLICY "Superusers can update any profile" ON user_profiles
+  FOR UPDATE TO authenticated
+  USING (EXISTS (SELECT 1 FROM user_profiles WHERE id = auth.uid() AND role = 'Superuser'));

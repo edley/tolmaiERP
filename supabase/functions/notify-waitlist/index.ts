@@ -5,9 +5,10 @@
 //   RESEND_API_KEY   — API key from https://resend.com
 //   ADMIN_EMAIL      — where to send the notification
 //
-// Deploy:  supabase functions deploy notify-waitlist --no-verify-jwt
+// Deploy:  supabase functions deploy notify-waitlist --verify-jwt
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 interface Payload {
   email: string
@@ -19,6 +20,21 @@ interface Payload {
 serve(async (req) => {
   if (req.method !== 'POST') {
     return new Response('Method not allowed', { status: 405 })
+  }
+
+  // Verify JWT
+  const authHeader = req.headers.get('Authorization') ?? ''
+  const token = authHeader.replace('Bearer ', '')
+  if (!token) {
+    return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { 'Content-Type': 'application/json' } })
+  }
+
+  const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? ''
+  const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY') ?? ''
+  const supabase = createClient(supabaseUrl, supabaseAnonKey)
+  const { data: { user }, error: authError } = await supabase.auth.getUser(token)
+  if (authError || !user) {
+    return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { 'Content-Type': 'application/json' } })
   }
 
   try {
