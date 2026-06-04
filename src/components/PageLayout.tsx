@@ -27,13 +27,13 @@ export function PageLayout({ title, description, actions, docType, children }: P
     <ViewFilterContext.Provider value={viewFilter}>
       <div>
         {/* ── Fixed Header ── */}
-        <div className="sticky top-0 z-10 bg-[#f3f3f3] border-b border-[#dddbda] px-8 pt-6 pb-4">
-          <div className="flex items-start justify-between gap-4">
+        <div className="sticky top-0 z-10 bg-[#f3f3f3] border-b border-[#dddbda] px-3 sm:px-5 lg:px-8 pt-4 sm:pt-6 pb-3 sm:pb-4">
+          <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-2 sm:gap-4">
             <div className="min-w-0">
-              <h1 className="text-xl font-bold text-[#16325c] truncate">{title}</h1>
-              {description && <p className="text-sm text-[#514f4d] mt-0.5">{description}</p>}
+              <h1 className="text-lg sm:text-xl font-bold text-[#16325c] truncate">{title}</h1>
+              {description && <p className="text-xs sm:text-sm text-[#514f4d] mt-0.5">{description}</p>}
             </div>
-            <div className="flex items-center gap-3 shrink-0">
+            <div className="flex items-center gap-2 sm:gap-3 shrink-0 flex-wrap">
               <ViewFilter value={viewFilter} onChange={setViewFilter} />
               {actions}
             </div>
@@ -70,7 +70,7 @@ export function PageLayout({ title, description, actions, docType, children }: P
           )}
         </div>
 
-        <div className="px-8 py-5">
+        <div className="px-3 sm:px-5 lg:px-8 py-3 sm:py-5">
           {children}
         </div>
       </div>

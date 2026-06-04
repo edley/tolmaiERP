@@ -4,8 +4,9 @@ import { useCompany } from '../../contexts/CompanyContext'
 import { PeriodSwitcher } from '../PeriodSwitcher'
 import { AccountMenu } from '../ui/account-menu'
 import { LiveClock } from '../ui/live-clock'
+import { Menu } from 'lucide-react'
 
-export function Header() {
+export function Header({ onMenuClick }: { onMenuClick?: () => void }) {
   const { user } = useAuth()
   const { currentCompany, availableCompanies, switchCompany } = useCompany()
   const [companyOpen, setCompanyOpen] = useState(false)
@@ -30,12 +31,20 @@ export function Header() {
   if (!user) return null
 
   return (
-    <div className="h-12 bg-white border-b border-[#dddbda] shrink-0 flex items-center justify-between px-4">
-      <div className="flex items-center gap-3">
-        <span className="text-sm font-bold text-[#16325c]">Tolmai ERP</span>
+    <div className="h-12 bg-white border-b border-[#dddbda] shrink-0 flex items-center justify-between px-2 sm:px-4 gap-2">
+      <div className="flex items-center gap-2 min-w-0">
+        <button
+          type="button"
+          onClick={onMenuClick}
+          className="lg:hidden p-1.5 rounded hover:bg-[#f3f3f3] transition-colors text-[#514f4d] shrink-0"
+          aria-label="Toggle menu"
+        >
+          <Menu className="w-5 h-5" />
+        </button>
+        <span className="text-sm font-bold text-[#16325c] truncate">Tolmai ERP</span>
         <PeriodSwitcher />
       </div>
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-2 sm:gap-3 shrink-0">
         {currentCompany && (
           <div className="relative hidden sm:block" ref={companyRef}>
             <button
@@ -44,8 +53,9 @@ export function Header() {
               className="flex items-center gap-1.5 text-sm font-semibold text-[#16325c] border-r border-[#dddbda] pr-3 hover:text-[#0070d2] transition-colors"
               title="Switch company"
             >
-              {currentCompany.name}
-              <svg className={`w-3 h-3 transition-transform ${companyOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <span className="hidden md:inline truncate max-w-[120px]">{currentCompany.name}</span>
+              <span className="md:hidden truncate max-w-[80px]">{currentCompany.name}</span>
+              <svg className={`w-3 h-3 transition-transform shrink-0 ${companyOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
               </svg>
             </button>
@@ -105,7 +115,7 @@ export function Header() {
             )}
           </div>
         )}
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 sm:gap-3">
           <LiveClock className="text-[11px] text-[#514f4d] font-medium hidden sm:inline" />
           <AccountMenu userName={user.name} userEmail={user.email} userId={user.id} userAvatarUrl={user.avatar_url} />
         </div>
