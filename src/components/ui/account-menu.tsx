@@ -30,9 +30,6 @@ import {
   ListTodo,
   Sparkles,
   HelpCircle,
-  Keyboard,
-  BookOpen,
-  Info,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../contexts/AuthContext";
@@ -59,7 +56,7 @@ export function AccountMenu({ userName, userEmail, userId, userAvatarUrl }: Acco
   const [waitlistOpen, setWaitlistOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   const [avatarOpen, setAvatarOpen] = useState(false);
-  const [avatarUrl, setAvatarUrl] = useState(userAvatarUrl);
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(userAvatarUrl ?? null);
   const initials = userName
     .split(" ")
     .map((n) => n[0])

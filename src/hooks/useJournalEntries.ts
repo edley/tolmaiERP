@@ -62,7 +62,7 @@ export function useJournalEntries() {
     let fromDb = false
 
     if (online) {
-      let query = supabase
+      let query = supabase!
         .from('journal_entries')
         .select('*, items:journal_entry_items(*)')
         .eq('company_id', companyId)
@@ -83,7 +83,7 @@ export function useJournalEntries() {
         if (data.length > 0) {
           let allocMap: Record<string, { allocation_code: string; expense_type: string | null; amount: number }[]> = {}
           try {
-            const { data: allocData } = await supabase
+            const { data: allocData } = await supabase!
               .from('journal_entry_item_allocations')
               .select('journal_entry_item_id, allocation_code, expense_type, amount')
               .eq('company_id', companyId)

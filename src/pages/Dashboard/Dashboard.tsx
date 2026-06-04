@@ -9,10 +9,6 @@ import { useAuth } from '../../contexts/AuthContext'
 import { getTasks } from '../../lib/tasks'
 import { getAllSessions } from '../../lib/sessionTracker'
 
-function fmt(n: number) {
-  return n.toLocaleString('en-US', { minimumFractionDigits: 2 })
-}
-
 function fmtDate(iso: string) {
   const d = new Date(iso)
   return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
