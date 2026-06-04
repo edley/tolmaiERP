@@ -20,7 +20,7 @@ export function Layout() {
         <div
           className={`${
             sidebarOpen
-              ? 'fixed left-0 top-0 z-50 h-full'
+              ? 'fixed left-0 top-12 z-50 h-full w-56'
               : 'hidden lg:block'
           } shrink-0`}
         >
