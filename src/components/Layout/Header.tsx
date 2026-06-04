@@ -4,6 +4,7 @@ import { useCompany } from '../../contexts/CompanyContext'
 import { PeriodSwitcher } from '../PeriodSwitcher'
 import { AccountMenu } from '../ui/account-menu'
 import { LiveClock } from '../ui/live-clock'
+import { Logo } from '../ui/logo'
 import { Menu } from 'lucide-react'
 
 export function Header({ onMenuClick }: { onMenuClick?: () => void }) {
@@ -41,7 +42,7 @@ export function Header({ onMenuClick }: { onMenuClick?: () => void }) {
         >
           <Menu className="w-5 h-5" />
         </button>
-        <span className="text-sm font-bold text-[#16325c] truncate">Tolmai ERP</span>
+        <Logo size={22} className="min-w-0" />
         <PeriodSwitcher />
       </div>
       <div className="flex items-center gap-2 sm:gap-3 shrink-0">

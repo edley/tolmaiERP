@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Link, Navigate } from 'react-router-dom'
 import { useAuth } from '../../contexts/AuthContext'
+import { Logo } from '../../components/ui/logo'
 
 export function Signup() {
   const { user, loading, signup, isOnline } = useAuth()
@@ -47,6 +48,9 @@ export function Signup() {
     <div className="min-h-screen bg-[#f3f3f3] flex items-center justify-center p-4">
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
+          <div className="flex justify-center mb-3">
+            <Logo size={48} showText={false} />
+          </div>
           <h1 className="text-2xl font-bold text-[#16325c]">Tolmai ERP</h1>
           <p className="text-sm text-[#514f4d] mt-1">Create your account</p>
         </div>

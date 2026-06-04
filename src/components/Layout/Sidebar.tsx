@@ -18,6 +18,7 @@ import {
   ChevronRight,
   Database,
 } from 'lucide-react'
+import { Logo } from '../ui/logo'
 import { useRBAC } from '../../hooks/useRBAC'
 import { useCompany } from '../../contexts/CompanyContext'
 import { ALL_MENUS, isGroup } from '../../lib/menus'
@@ -189,11 +190,7 @@ export function Sidebar({ onClose }: { onClose?: () => void }) {
     <aside className="w-56 bg-white border-r border-[#dddbda] flex flex-col h-full">
       <div className="px-5 py-4 border-b border-[#dddbda] shrink-0">
         <NavLink to="/" onClick={onClose} className="flex items-center gap-2.5">
-          <div className="w-7 h-7 rounded bg-[#0070d2] flex items-center justify-center">
-            <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
-            </svg>
-          </div>
+          <Logo size={28} showText={false} />
           <div>
             <span className="text-sm font-bold text-[#16325c] block leading-tight">Tolmai ERP</span>
             <span className="text-[10px] text-[#514f4d]">Accounting</span>
