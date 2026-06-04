@@ -52,7 +52,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     init()
   }, [isOnline])
 
-  const fetchProfile = async (userId: string, email: string): Promise<{ role: string; avatar_url: string | null; password_reset_required: boolean }> => {
+  const fetchProfile = async (userId: string): Promise<{ role: string; avatar_url: string | null; password_reset_required: boolean }> => {
     try {
       const { data: profile, error: profileErr } = await supabase!
         .from('user_profiles')
@@ -65,8 +65,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
       }
     } catch {}
-    const adminEmail = import.meta.env.VITE_ADMIN_EMAIL as string | undefined
-    if (adminEmail && email.toLowerCase() === adminEmail.toLowerCase()) return { role: 'Superuser', avatar_url: null, password_reset_required: false }
     return { role: 'User', avatar_url: null, password_reset_required: false }
   }
 
@@ -74,7 +72,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const data = await signInWithEmail(email, password)
     const u = data.user
     if (u) {
-      const { role, avatar_url, password_reset_required } = await fetchProfile(u.id, u.email ?? '')
+      const { role, avatar_url, password_reset_required } = await fetchProfile(u.id)
       const resolved: AuthUser = {
         id: u.id,
         email: u.email ?? '',
@@ -93,7 +91,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const data = await signUpWithEmail(email, password, name)
     const u = data.user
     if (u) {
-      const { role, avatar_url, password_reset_required } = await fetchProfile(u.id, u.email ?? '')
+      const { role, avatar_url, password_reset_required } = await fetchProfile(u.id)
       const resolved: AuthUser = {
         id: u.id,
         email: u.email ?? '',

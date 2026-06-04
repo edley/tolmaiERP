@@ -16,6 +16,7 @@ import {
   Building2,
   Check,
   ChevronRight,
+  Database,
 } from 'lucide-react'
 import { useRBAC } from '../../hooks/useRBAC'
 import { useCompany } from '../../contexts/CompanyContext'
@@ -46,6 +47,7 @@ const ICON_MAP: Record<string, typeof LayoutDashboard> = {
   'user-sessions': Shield,
   companies: Building2,
   'audit-trail': Shield,
+  'object-manager': Database,
 }
 
 function CompanySwitcher() {
@@ -179,7 +181,7 @@ export function Sidebar({ onClose }: { onClose?: () => void }) {
       const visible = item.children.some((child) => canAccessMenu(child.key))
       return visible
     }
-    if (item.key === 'usermgmt' || item.key === 'companies' || item.key === 'audit-trail') return isSuperuser
+    if (item.key === 'usermgmt' || item.key === 'companies' || item.key === 'audit-trail' || item.key === 'object-manager') return isSuperuser
     return canAccessMenu(item.key)
   })
 

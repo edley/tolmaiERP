@@ -82,6 +82,7 @@ export const ALL_MENUS: MenuItem[] = [
     children: [
       { key: 'usermgmt',     label: 'User Management',  route: '/usermgmt',     module: 'Administration' },
       { key: 'audit-trail',  label: 'Audit Trail',      route: '/audit-trail',  module: 'Administration' },
+      { key: 'object-manager', label: 'Object Manager', route: '/object-manager', module: 'Administration' },
     ],
   },
 ]

@@ -16,7 +16,7 @@ export function Signup() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!name.trim() || !email.trim() || !password) { setError('Fill in all fields'); return }
-    if (password.length < 6) { setError('Password must be at least 6 characters'); return }
+    if (password.length < 8) { setError('Password must be at least 8 characters'); return }
     setSubmitting(true)
     setError(null)
     try {

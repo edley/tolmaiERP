@@ -75,9 +75,6 @@ export async function getCurrentSession(): Promise<AuthUser | null> {
     }
   } catch {}
 
-  const adminEmail = import.meta.env.VITE_ADMIN_EMAIL as string | undefined
-  if (adminEmail && user.email?.toLowerCase() === adminEmail.toLowerCase()) role = 'Superuser'
-
   return {
     id: user.id,
     email: user.email ?? '',

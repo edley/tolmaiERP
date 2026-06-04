@@ -18,6 +18,7 @@ import { Settings } from './pages/Settings'
 import { UserManagement } from './pages/UserManagement'
 import { UserSession } from './pages/UserSession'
 import { AuditTrailPage } from './pages/AuditTrail'
+import { ObjectManager } from './pages/ObjectManager'
 import { PaymentModes } from './pages/PaymentModes'
 import { AccountingPeriods } from './pages/AccountingPeriods'
 import { TrialBalance } from './pages/TrialBalance'
@@ -57,6 +58,7 @@ function App() {
             <Route path="/usermgmt" element={<UserManagement />} />
             <Route path="/user-sessions" element={<UserSession />} />
             <Route path="/audit-trail" element={<AuditTrailPage />} />
+            <Route path="/object-manager" element={<ObjectManager />} />
             <Route path="/companies" element={<Companies />} />
             <Route path="/bank-report" element={<BankReport />} />
           </Route>
