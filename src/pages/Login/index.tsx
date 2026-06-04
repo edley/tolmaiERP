@@ -43,7 +43,7 @@ export function Login() {
           signUpLink={
             <>
               Don&apos;t have an account?{' '}
-              <Link to="/signup" className="text-indigo-500 font-semibold hover:underline">Sign Up</Link>
+              <Link to="/signup" className="text-indigo-400 hover:underline">Sign up</Link>
             </>
           }
         />
