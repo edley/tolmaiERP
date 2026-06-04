@@ -11,7 +11,7 @@ export function Layout() {
     <div className="flex flex-col h-screen bg-[#f3f3f3]">
       <Header onMenuClick={() => setSidebarOpen(!sidebarOpen)} />
       <div className="flex flex-1 min-h-0">
-        <div className={`fixed inset-0 z-40 lg:static lg:z-auto ${sidebarOpen ? '' : 'pointer-events-none'}`}>
+        <div className={`fixed inset-0 z-40 lg:static lg:z-auto lg:pointer-events-auto ${sidebarOpen ? '' : 'pointer-events-none'}`}>
           <div
             className={`absolute inset-0 bg-black/30 transition-opacity duration-200 lg:hidden ${
               sidebarOpen ? 'opacity-100' : 'opacity-0'
