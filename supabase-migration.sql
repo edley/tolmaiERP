@@ -912,3 +912,8 @@ DROP POLICY IF EXISTS "Anyone can view avatars" ON storage.objects;
 CREATE POLICY "Anyone can view avatars" ON storage.objects
   FOR SELECT TO anon, authenticated
   USING (bucket_id = 'avatars');
+
+-- ============================================================
+-- 27. Force password reset on first login
+-- ============================================================
+ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS password_reset_required BOOLEAN NOT NULL DEFAULT false;

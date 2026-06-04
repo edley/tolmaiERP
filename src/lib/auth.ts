@@ -6,6 +6,7 @@ export interface AuthUser {
   name: string
   avatar_url: string | null
   role: string
+  password_reset_required: boolean
 }
 
 export async function signInWithEmail(email: string, password: string) {
@@ -60,15 +61,17 @@ export async function getCurrentSession(): Promise<AuthUser | null> {
 
   let role = 'User'
   let avatarUrl: string | null = null
+  let passwordResetRequired = false
   try {
     const { data: profile, error: profileErr } = await supabase!
       .from('user_profiles')
-      .select('role, avatar_url')
+      .select('role, avatar_url, password_reset_required')
       .eq('id', user.id)
       .single()
     if (!profileErr && profile) {
       if (profile.role) role = profile.role
       if (profile.avatar_url) avatarUrl = profile.avatar_url
+      if (profile.password_reset_required) passwordResetRequired = profile.password_reset_required
     }
   } catch {}
 
@@ -81,7 +84,19 @@ export async function getCurrentSession(): Promise<AuthUser | null> {
     name: user.user_metadata?.name ?? user.email ?? 'Unknown',
     avatar_url: avatarUrl ?? user.user_metadata?.avatar_url ?? null,
     role,
+    password_reset_required: passwordResetRequired,
   }
+}
+
+export async function updatePassword(newPassword: string, userId: string): Promise<void> {
+  if (!isOnline()) throw new Error('Database not configured.')
+  const { error: authError } = await supabase!.auth.updateUser({ password: newPassword })
+  if (authError) throw authError
+  const { error: profileError } = await supabase!
+    .from('user_profiles')
+    .update({ password_reset_required: false, updated_at: new Date().toISOString() })
+    .eq('id', userId)
+  if (profileError) throw profileError
 }
 
 export interface UserProfile {

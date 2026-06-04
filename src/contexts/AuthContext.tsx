@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useEffect, useRef, useCallback, type ReactNode } from 'react'
-import { signInWithEmail, signUpWithEmail, signInWithGoogle, signInWithApple, signOut, getCurrentSession, type AuthUser } from '../lib/auth'
+import { signInWithEmail, signUpWithEmail, signInWithGoogle, signInWithApple, signOut, getCurrentSession, updatePassword as updateAuthPassword, type AuthUser } from '../lib/auth'
 import { supabase } from '../lib/supabase'
 import { registerSession, heartbeatSession, removeSession } from '../lib/sessionTracker'
 
@@ -13,6 +13,8 @@ interface AuthContextType {
   loginAsDemo: () => void
   logout: () => Promise<void>
   isOnline: boolean
+  updatePassword: (newPassword: string) => Promise<void>
+  passwordResetRequired: boolean
 }
 
 const AuthContext = createContext<AuthContextType | null>(null)
@@ -21,6 +23,7 @@ const IDLE_TIMEOUT = 5 * 60 * 1000
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null)
+  const passwordResetRequired = user?.password_reset_required ?? false
   const [loading, setLoading] = useState(true)
   const idleRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const logoutRef = useRef<() => Promise<void>>(undefined)
@@ -49,35 +52,36 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     init()
   }, [isOnline])
 
-  const fetchProfile = async (userId: string, email: string): Promise<{ role: string; avatar_url: string | null }> => {
+  const fetchProfile = async (userId: string, email: string): Promise<{ role: string; avatar_url: string | null; password_reset_required: boolean }> => {
     try {
       const { data: profile, error: profileErr } = await supabase!
         .from('user_profiles')
-        .select('role, avatar_url')
+        .select('role, avatar_url, password_reset_required')
         .eq('id', userId)
         .single()
       if (!profileErr && profile) {
         if (profile.role && ['Superuser', 'Manager', 'Team Leader', 'User'].includes(profile.role)) {
-          return { role: profile.role, avatar_url: profile.avatar_url ?? null }
+          return { role: profile.role, avatar_url: profile.avatar_url ?? null, password_reset_required: !!profile.password_reset_required }
         }
       }
     } catch {}
     const adminEmail = import.meta.env.VITE_ADMIN_EMAIL as string | undefined
-    if (adminEmail && email.toLowerCase() === adminEmail.toLowerCase()) return { role: 'Superuser', avatar_url: null }
-    return { role: 'User', avatar_url: null }
+    if (adminEmail && email.toLowerCase() === adminEmail.toLowerCase()) return { role: 'Superuser', avatar_url: null, password_reset_required: false }
+    return { role: 'User', avatar_url: null, password_reset_required: false }
   }
 
   const login = async (email: string, password: string) => {
     const data = await signInWithEmail(email, password)
     const u = data.user
     if (u) {
-      const { role, avatar_url } = await fetchProfile(u.id, u.email ?? '')
+      const { role, avatar_url, password_reset_required } = await fetchProfile(u.id, u.email ?? '')
       const resolved: AuthUser = {
         id: u.id,
         email: u.email ?? '',
         name: u.user_metadata?.name ?? u.email ?? '',
         avatar_url,
         role,
+        password_reset_required,
       }
       setUser(resolved)
       setSessionFlag()
@@ -89,13 +93,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const data = await signUpWithEmail(email, password, name)
     const u = data.user
     if (u) {
-      const { role, avatar_url } = await fetchProfile(u.id, u.email ?? '')
+      const { role, avatar_url, password_reset_required } = await fetchProfile(u.id, u.email ?? '')
       const resolved: AuthUser = {
         id: u.id,
         email: u.email ?? '',
         name: name,
         avatar_url,
         role,
+        password_reset_required,
       }
       setUser(resolved)
       registerSession(resolved)
@@ -113,6 +118,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const setSessionFlag = () => localStorage.setItem('tolmai_session', 'active')
   const clearSessionFlag = () => localStorage.removeItem('tolmai_session')
 
+  const handleUpdatePassword = async (newPassword: string) => {
+    if (!user) throw new Error('Not logged in')
+    await updateAuthPassword(newPassword, user.id)
+    setUser((prev) => prev ? { ...prev, password_reset_required: false } : null)
+  }
+
   const loginAsDemo = useCallback(() => {
     const demoUser: AuthUser = {
       id: 'demo-user',
@@ -120,6 +131,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       name: 'Demo User',
       avatar_url: null,
       role: 'Superuser',
+      password_reset_required: false,
     }
     setUser(demoUser)
     setSessionFlag()
@@ -174,7 +186,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [user, resetIdleTimer])
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, signup, loginWithGoogle, loginWithApple, loginAsDemo, logout, isOnline }}>
+    <AuthContext.Provider value={{ user, loading, login, signup, loginWithGoogle, loginWithApple, loginAsDemo, logout, isOnline, updatePassword: handleUpdatePassword, passwordResetRequired }}>
       {children}
     </AuthContext.Provider>
   )

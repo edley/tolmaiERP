@@ -13,6 +13,7 @@ import { Receipts } from './pages/Receipts'
 import { FinancialReports } from './pages/FinancialReports'
 import { Login } from './pages/Login'
 import { Signup } from './pages/Signup'
+import { ForcePasswordReset } from './pages/ForcePasswordReset'
 import { Settings } from './pages/Settings'
 import { UserManagement } from './pages/UserManagement'
 import { UserSession } from './pages/UserSession'
@@ -35,6 +36,7 @@ function App() {
         <Route path="/login" element={<Login />} />
         <Route path="/signup" element={<Signup />} />
         <Route element={<ProtectedRoute />}>
+            <Route path="/force-password-reset" element={<ForcePasswordReset />} />
             <Route element={<ThemeProvider><CompanyProvider><PeriodProvider><Layout /></PeriodProvider></CompanyProvider></ThemeProvider>}>
             <Route path="/" element={<Dashboard />} />
             <Route path="/accounts" element={<ChartOfAccounts />} />
