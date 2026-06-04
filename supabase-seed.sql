@@ -717,3 +717,29 @@ BEGIN
     UPDATE ledger_entries SET balance = v_running WHERE id = r.id;
   END LOOP;
 END $$;
+
+-- Backfill company_id for ALL tables to ensure no NULL company_id exists
+-- This is critical for multi-tenant isolation — every row must have a company_id
+DO $$
+DECLARE
+  v_default_company UUID := '00000000-0000-4000-8000-000000000001'::uuid;
+BEGIN
+  UPDATE accounts                       SET company_id = v_default_company WHERE company_id IS NULL;
+  UPDATE accounting_periods             SET company_id = v_default_company WHERE company_id IS NULL;
+  UPDATE transaction_types              SET company_id = v_default_company WHERE company_id IS NULL;
+  UPDATE payment_modes                  SET company_id = v_default_company WHERE company_id IS NULL;
+  UPDATE payments                       SET company_id = v_default_company WHERE company_id IS NULL;
+  UPDATE payment_lines                  SET company_id = v_default_company WHERE company_id IS NULL;
+  UPDATE journal_entries                SET company_id = v_default_company WHERE company_id IS NULL;
+  UPDATE journal_entry_items            SET company_id = v_default_company WHERE company_id IS NULL;
+  UPDATE ledger_entries                 SET company_id = v_default_company WHERE company_id IS NULL;
+  UPDATE receipts                       SET company_id = v_default_company WHERE company_id IS NULL;
+  UPDATE receipt_lines                  SET company_id = v_default_company WHERE company_id IS NULL;
+  UPDATE trial_balances                 SET company_id = v_default_company WHERE company_id IS NULL;
+  UPDATE allocation_mappings            SET company_id = v_default_company WHERE company_id IS NULL;
+  UPDATE payment_line_allocations       SET company_id = v_default_company WHERE company_id IS NULL;
+  UPDATE receipt_line_allocations       SET company_id = v_default_company WHERE company_id IS NULL;
+  UPDATE journal_entry_item_allocations SET company_id = v_default_company WHERE company_id IS NULL;
+  UPDATE expense_types                  SET company_id = v_default_company WHERE company_id IS NULL;
+  UPDATE user_profiles                  SET company_id = v_default_company WHERE company_id IS NULL;
+END $$;

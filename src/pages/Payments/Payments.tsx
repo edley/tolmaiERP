@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react'
 import { Plus, CreditCard, Pencil, Trash2, Send, CheckCircle, Upload, XCircle, Clock } from 'lucide-react'
+import { useCompany } from '../../contexts/CompanyContext'
 import { usePayments } from '../../hooks/usePayments'
 import { useRBAC } from '../../hooks/useRBAC'
 import { usePeriod } from '../../contexts/PeriodContext'
@@ -22,6 +23,7 @@ const STATUS_COLORS: Record<string, string> = {
 }
 
 export function Payments() {
+  const { currentCompany } = useCompany()
   const { payments, loading, submitPayment, approvePayment, postToLedger, cancelPayment, deletePayment, refetch } = usePayments()
   const { userType } = useRBAC()
   const { periods, currentPeriod, setCurrentPeriod } = usePeriod()
@@ -76,7 +78,7 @@ export function Payments() {
         </div>
       )}
 
-      <Modal open={showForm} onClose={() => { setShowForm(false); setEditingPayment(null) }} title={editingPayment ? 'Edit Payment' : 'New Payment'} size="full">
+      <Modal open={showForm} onClose={() => { setShowForm(false); setEditingPayment(null) }} title={editingPayment ? 'Edit Payment' : 'New Payment'} size="full" companyName={currentCompany?.name}>
         <CashTransactionForm payment={editingPayment ?? undefined} onClose={() => { setShowForm(false); setEditingPayment(null) }} onSuccess={refetch} />
       </Modal>
 

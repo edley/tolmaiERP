@@ -1,5 +1,7 @@
 import type { Account, AllocationMapping } from '../types'
 
+const BASE_KEY = 'allocation_mappings'
+
 function uid(): string {
   return crypto.randomUUID()
 }
@@ -23,6 +25,8 @@ function buildDemoMappings(accounts: Account[]): AllocationMapping[] {
     { gl_account_id: acc('6410'), gl_code: '6410', allocation_code: 'ADMIN',   description: 'Admin software',             active: true },
     { gl_account_id: acc('6710'), gl_code: '6710', allocation_code: 'SALES',   description: 'Sales travel',               active: true },
     { gl_account_id: acc('6710'), gl_code: '6710', allocation_code: 'ADMIN',   description: 'Exec travel',                active: true },
+    { gl_account_id: acc('1210'), gl_code: '1210', allocation_code: 'ADMIN',   description: 'Admin receivables',          active: true },
+    { gl_account_id: acc('1210'), gl_code: '1210', allocation_code: 'SALES',   description: 'Sales receivables',          active: true },
   ]
 
   return mappings.map((m) => ({
@@ -34,39 +38,53 @@ function buildDemoMappings(accounts: Account[]): AllocationMapping[] {
 }
 
 let currentMappings: AllocationMapping[] | null = null
+let currentMappingsCompany: string | null = null
 
-export function getMappings(accounts: Account[]): AllocationMapping[] {
-  if (accounts.length === 0) return []
+function scopedKey(): string {
+  const cid = localStorage.getItem('tolmai_company_id')
+  return cid ? `${BASE_KEY}_${cid}` : BASE_KEY
+}
 
-  if (currentMappings) {
-    return currentMappings.map((m) => ({
-      ...m,
-      gl_account: m.gl_account_id ? accounts.find((a) => a.id === m.gl_account_id) : undefined,
-    }))
-  }
+function ensureMappingsLoaded(accounts: Account[]): AllocationMapping[] {
+  const cid = localStorage.getItem('tolmai_company_id') ?? null
+  if (currentMappings && currentMappingsCompany === cid) return currentMappings!
+  currentMappingsCompany = cid
+  const key = scopedKey()
   try {
-    const stored = localStorage.getItem('allocation_mappings')
+    const stored = localStorage.getItem(key)
+    if (stored) {
+      currentMappings = JSON.parse(stored)
+      if (currentMappings && currentMappings.length > 0) return currentMappings!
+    }
+  } catch {}
+  // migrate from unscoped key
+  try {
+    const stored = localStorage.getItem(BASE_KEY)
     if (stored) {
       currentMappings = JSON.parse(stored)
       if (currentMappings && currentMappings.length > 0) {
-        return currentMappings.map((m) => ({
-          ...m,
-          gl_account: m.gl_account_id ? accounts.find((a) => a.id === m.gl_account_id) : undefined,
-        }))
+        localStorage.setItem(key, stored)
+        localStorage.removeItem(BASE_KEY)
+        return currentMappings!
       }
     }
-  } catch { /* ignore */ }
+  } catch {}
   currentMappings = buildDemoMappings(accounts)
-  const result = currentMappings.map((m) => ({
+  return currentMappings!
+}
+
+export function getMappings(accounts: Account[]): AllocationMapping[] {
+  if (accounts.length === 0) return []
+  const mappings = ensureMappingsLoaded(accounts)
+  return mappings.map((m) => ({
     ...m,
     gl_account: m.gl_account_id ? accounts.find((a) => a.id === m.gl_account_id) : undefined,
   }))
-  return result
 }
 
 export function saveMappings(mappings: AllocationMapping[]) {
   currentMappings = mappings
-  localStorage.setItem('allocation_mappings', JSON.stringify(mappings.map(({ gl_account, ...m }) => m)))
+  localStorage.setItem(scopedKey(), JSON.stringify(mappings.map(({ gl_account, ...m }) => m)))
 }
 
 export function addMapping(mapping: Omit<AllocationMapping, 'id' | 'created_at' | 'updated_at' | 'gl_account'>, accounts: Account[]): AllocationMapping {

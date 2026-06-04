@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Plus, Edit2, Trash2, ChevronRight, ChevronDown } from 'lucide-react'
+import { useCompany } from '../../contexts/CompanyContext'
 import { useAccounts } from '../../hooks/useAccounts'
 import { buildAccountTree, ACCOUNT_TYPE_LABELS } from '../../lib/accounting'
 import { DemoBanner } from '../../components/DemoBanner'
@@ -79,6 +80,7 @@ function AccountRow({ account, depth = 0, onEdit, onDelete }: { account: Account
 }
 
 export function ChartOfAccounts() {
+  const { currentCompany } = useCompany()
   const { accounts, loading, error, isDemo, deleteAccount } = useAccounts()
   const [showForm, setShowForm] = useState(false)
   const [editingAccount, setEditingAccount] = useState<Account | null>(null)
@@ -114,11 +116,11 @@ export function ChartOfAccounts() {
       }
     >
 
-      <Modal open={showForm} onClose={() => setShowForm(false)} title="New Account">
+      <Modal open={showForm} onClose={() => setShowForm(false)} title="New Account" companyName={currentCompany?.name}>
         <AccountForm onClose={() => setShowForm(false)} />
       </Modal>
 
-      <Modal open={!!editingAccount} onClose={() => setEditingAccount(null)} title="Edit Account">
+      <Modal open={!!editingAccount} onClose={() => setEditingAccount(null)} title="Edit Account" companyName={currentCompany?.name}>
         {editingAccount && <AccountForm key={editingAccount.id} account={editingAccount} onClose={() => setEditingAccount(null)} />}
       </Modal>
 

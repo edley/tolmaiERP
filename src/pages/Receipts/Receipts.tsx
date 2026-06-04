@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react'
 import { Plus, CreditCard, Pencil, Trash2, Send, CheckCircle, Upload, XCircle, Clock } from 'lucide-react'
+import { useCompany } from '../../contexts/CompanyContext'
 import { useReceipts } from '../../hooks/useReceipts'
 import { useRBAC } from '../../hooks/useRBAC'
 import { usePeriod } from '../../contexts/PeriodContext'
@@ -22,6 +23,7 @@ const STATUS_COLORS: Record<string, string> = {
 }
 
 export function Receipts() {
+  const { currentCompany } = useCompany()
   const { receipts, loading, submitReceipt, approveReceipt, postToLedger, cancelReceipt, deleteReceipt, refetch } = useReceipts()
   const { userType } = useRBAC()
   const { periods, currentPeriod, setCurrentPeriod } = usePeriod()
@@ -76,7 +78,7 @@ export function Receipts() {
         </div>
       )}
 
-      <Modal open={showForm} onClose={() => { setShowForm(false); setEditingReceipt(null) }} title={editingReceipt ? 'Edit Receipt' : 'New Receipt'} size="full">
+      <Modal open={showForm} onClose={() => { setShowForm(false); setEditingReceipt(null) }} title={editingReceipt ? 'Edit Receipt' : 'New Receipt'} size="full" companyName={currentCompany?.name}>
         <CashReceiptForm receipt={editingReceipt ?? undefined} onClose={() => { setShowForm(false); setEditingReceipt(null) }} onSuccess={refetch} />
       </Modal>
 

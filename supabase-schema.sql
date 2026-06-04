@@ -251,19 +251,49 @@ CREATE TABLE payment_modes (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   name TEXT NOT NULL,
   gl_account_id UUID REFERENCES accounts(id),
+  bank_account_no TEXT DEFAULT '',
+  address TEXT DEFAULT '',
+  location TEXT DEFAULT '',
+  account_type TEXT DEFAULT '',
+  company_id UUID REFERENCES companies(id),
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 ALTER TABLE payment_modes ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "Enable all access on payment_modes"
-  ON payment_modes FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "Company-scoped access on payment_modes"
+  ON payment_modes FOR ALL TO authenticated
+  USING (company_id IN (SELECT public.user_company_ids()))
+  WITH CHECK (company_id IN (SELECT public.user_company_ids()));
 
 -- Seed default payment modes (fixed UUIDs to match frontend defaults)
-INSERT INTO payment_modes (id, name, gl_account_id) VALUES
-  ('11111111-1111-4111-8111-111111111111'::uuid, 'Bank', (SELECT id FROM accounts WHERE code = '1120')),
-  ('22222222-2222-4222-8222-222222222222'::uuid, 'Cash', (SELECT id FROM accounts WHERE code = '1110'))
+INSERT INTO payment_modes (id, name, gl_account_id, company_id) VALUES
+  ('11111111-1111-4111-8111-111111111111'::uuid, 'Bank', (SELECT id FROM accounts WHERE code = '1120'), NULL),
+  ('22222222-2222-4222-8222-222222222222'::uuid, 'Cash', (SELECT id FROM accounts WHERE code = '1110'), NULL)
 ON CONFLICT (id) DO NOTHING;
+
+-- ============================================================
+-- 7b. User Tasks (per-user, per-company todo list)
+-- ============================================================
+CREATE TABLE user_tasks (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  text TEXT NOT NULL,
+  completed BOOLEAN NOT NULL DEFAULT FALSE,
+  due_date DATE,
+  completion_percentage SMALLINT NOT NULL DEFAULT 0 CHECK (completion_percentage >= 0 AND completion_percentage <= 100),
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  company_id UUID NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE user_tasks ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "User-scoped access on user_tasks"
+  ON user_tasks FOR ALL TO authenticated
+  USING (user_id = auth.uid() AND company_id IN (SELECT public.user_company_ids()))
+  WITH CHECK (user_id = auth.uid() AND company_id IN (SELECT public.user_company_ids()));
+
+CREATE INDEX IF NOT EXISTS idx_user_tasks_user_company ON user_tasks(user_id, company_id);
 
 -- ============================================================
 -- 8. Payments (header)
@@ -502,3 +532,28 @@ CREATE POLICY "Enable all access on journal_entry_item_allocations"
   ON journal_entry_item_allocations FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
 
 CREATE INDEX IF NOT EXISTS idx_je_item_allocations_item ON journal_entry_item_allocations(journal_entry_item_id);
+
+-- ============================================================
+-- 16. Waitlist Signups
+-- ============================================================
+CREATE TABLE waitlist_signups (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  email TEXT NOT NULL,
+  user_id UUID REFERENCES auth.users(id) ON DELETE SET NULL,
+  company_id UUID,
+  source TEXT DEFAULT 'app',
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE waitlist_signups ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Enable insert for all on waitlist_signups"
+  ON waitlist_signups FOR INSERT TO anon, authenticated
+  WITH CHECK (true);
+
+CREATE POLICY "Enable select for authenticated on waitlist_signups"
+  ON waitlist_signups FOR SELECT TO authenticated
+  USING (true);
+
+CREATE INDEX IF NOT EXISTS idx_waitlist_signups_email ON waitlist_signups(email);
+CREATE INDEX IF NOT EXISTS idx_waitlist_signups_created ON waitlist_signups(created_at);

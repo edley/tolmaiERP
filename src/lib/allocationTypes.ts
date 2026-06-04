@@ -12,6 +12,8 @@ export interface AllocationTypeDef {
   gl_account?: Account
 }
 
+const BASE_KEY = 'allocation_types'
+
 function uid(): string {
   return crypto.randomUUID()
 }
@@ -41,34 +43,48 @@ function buildDemoTypes(accounts: Account[]): AllocationTypeDef[] {
 }
 
 let currentTypes: AllocationTypeDef[] | null = null
+let currentTypesCompany: string | null = null
 
-export function getTypes(accounts: Account[]): AllocationTypeDef[] {
-  if (accounts.length === 0) return []
+function scopedKey(): string {
+  const cid = localStorage.getItem('tolmai_company_id')
+  return cid ? `${BASE_KEY}_${cid}` : BASE_KEY
+}
 
-  if (currentTypes) {
-    return currentTypes.map((t) => ({
-      ...t,
-      gl_account: t.gl_account_id ? accounts.find((a) => a.id === t.gl_account_id) : undefined,
-    }))
-  }
+function ensureTypesLoaded(accounts: Account[]): AllocationTypeDef[] {
+  const cid = localStorage.getItem('tolmai_company_id') ?? null
+  if (currentTypes && currentTypesCompany === cid) return currentTypes!
+  currentTypesCompany = cid
+  const key = scopedKey()
   try {
-    const stored = localStorage.getItem('allocation_types')
+    const stored = localStorage.getItem(key)
+    if (stored) {
+      currentTypes = JSON.parse(stored)
+      if (currentTypes && currentTypes.length > 0) return currentTypes!
+    }
+  } catch {}
+  // migrate from unscoped key
+  try {
+    const stored = localStorage.getItem(BASE_KEY)
     if (stored) {
       currentTypes = JSON.parse(stored)
       if (currentTypes && currentTypes.length > 0) {
-        return currentTypes.map((t) => ({
-          ...t,
-          gl_account: t.gl_account_id ? accounts.find((a) => a.id === t.gl_account_id) : undefined,
-        }))
+        localStorage.setItem(key, stored)
+        localStorage.removeItem(BASE_KEY)
+        return currentTypes!
       }
     }
-  } catch { /* ignore */ }
+  } catch {}
   currentTypes = buildDemoTypes(accounts)
-  const result = currentTypes.map((t) => ({
+  return currentTypes!
+}
+
+export function getTypes(accounts: Account[]): AllocationTypeDef[] {
+  if (accounts.length === 0) return []
+  const types = ensureTypesLoaded(accounts)
+  return types.map((t) => ({
     ...t,
     gl_account: t.gl_account_id ? accounts.find((a) => a.id === t.gl_account_id) : undefined,
   }))
-  return result
 }
 
 export function getTypesForGlCode(glCode: string, accounts: Account[]): string[] {
@@ -78,7 +94,7 @@ export function getTypesForGlCode(glCode: string, accounts: Account[]): string[]
 
 function saveTypes(types: AllocationTypeDef[]) {
   currentTypes = types
-  localStorage.setItem('allocation_types', JSON.stringify(types.map(({ gl_account, ...t }) => t)))
+  localStorage.setItem(scopedKey(), JSON.stringify(types.map(({ gl_account, ...t }) => t)))
 }
 
 export function addType(t: Omit<AllocationTypeDef, 'id' | 'created_at' | 'updated_at' | 'gl_account'>, accounts: Account[]): AllocationTypeDef {

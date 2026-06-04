@@ -1,33 +1,108 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { useRBAC } from '../../hooks/useRBAC'
 import { LookupField } from '../../components/LookupField'
 import { PageLayout } from '../../components/PageLayout'
-import {
-  USER_TYPES,
-  getPermissions,
-  resetPermissions as resetMenuPerms,
-  grantMenu,
-  revokeMenu,
-} from '../../lib/rbac'
+import { supabase, isOnline } from '../../lib/supabase'
+import { fetchUserProfiles, updateUserProfile, fetchUserCompanies, addUserCompanyAccess, removeUserCompanyAccess, setUserDefaultCompany, type UserProfile } from '../../lib/auth'
+import { USER_TYPES, getPermissions, resetPermissions as resetMenuPerms, grantMenu, revokeMenu } from '../../lib/rbac'
 import { getMenuByKey, getModules, getFlatMenus } from '../../lib/menus'
-import {
-  DOC_TYPES,
-  DOC_TYPE_LABELS,
-  getCrud,
-  setCrudPerm,
-  resetCrud,
-  type CrudOp,
-} from '../../lib/permissions'
+import { DOC_TYPES, DOC_TYPE_LABELS, getCrud, setCrudPerm, resetCrud, type CrudOp } from '../../lib/permissions'
+import type { Company } from '../../types'
 
 const CRUD_OPS: CrudOp[] = ['create', 'read', 'update', 'delete']
+const ROLE_OPTIONS = [
+  { value: 'User', label: 'User' },
+  { value: 'Team Leader', label: 'Team Leader' },
+  { value: 'Manager', label: 'Manager' },
+  { value: 'Superuser', label: 'Superuser' },
+]
 
 export function UserManagement() {
   const { isSuperuser } = useRBAC()
   const [tick, setTick] = useState(0)
   const [confirmReset, setConfirmReset] = useState(false)
-  const [activeTab, setActiveTab] = useState<'menus' | 'crud'>('menus')
+  const [activeTab, setActiveTab] = useState<'menus' | 'crud' | 'roles' | 'companies'>('menus')
+  const [profiles, setProfiles] = useState<UserProfile[]>([])
+  const [profilesLoading, setProfilesLoading] = useState(false)
+  const [profileError, setProfileError] = useState<string | null>(null)
+  const [savingId, setSavingId] = useState<string | null>(null)
+  const [allCompanies, setAllCompanies] = useState<Company[]>([])
+  const [userCompanyMap, setUserCompanyMap] = useState<Record<string, string[]>>({})
+  const [userDefaultMap, setUserDefaultMap] = useState<Record<string, string>>({})
 
   const refresh = () => setTick((t) => t + 1)
+
+  const loadProfiles = async () => {
+    setProfilesLoading(true)
+    setProfileError(null)
+    try {
+      const data = await fetchUserProfiles()
+      setProfiles(data)
+
+      if (isOnline() && supabase) {
+        const { data: companies } = await supabase.from('companies').select('*').order('name')
+        setAllCompanies((companies ?? []) as Company[])
+
+        const accessMap: Record<string, string[]> = {}
+        const defaultMap: Record<string, string> = {}
+        for (const p of data) {
+          try {
+            const access = await fetchUserCompanies(p.id)
+            accessMap[p.id] = access.map((a) => a.company_id)
+            const def = access.find((a) => a.is_default)
+            if (def) defaultMap[p.id] = def.company_id
+          } catch {}
+        }
+        setUserCompanyMap(accessMap)
+        setUserDefaultMap(defaultMap)
+      }
+    } catch (e: any) {
+      setProfileError(e?.message ?? 'Failed to load user profiles')
+    }
+    setProfilesLoading(false)
+  }
+
+  useEffect(() => {
+    if (activeTab === 'roles' || activeTab === 'companies') loadProfiles()
+  }, [activeTab])
+
+  const toggleCompanyAccess = async (userId: string, companyId: string, add: boolean) => {
+    try {
+      if (add) {
+        const isDefault = allCompanies.length > 0 && !Object.values(userDefaultMap).some(Boolean)
+        await addUserCompanyAccess(userId, companyId, isDefault)
+      } else {
+        await removeUserCompanyAccess(userId, companyId)
+      }
+      setUserCompanyMap((prev) => {
+        const current = prev[userId] ?? []
+        const next = add ? [...current, companyId] : current.filter((c) => c !== companyId)
+        return { ...prev, [userId]: next }
+      })
+    } catch (e: any) {
+      setProfileError(e?.message ?? 'Failed to update company access')
+    }
+  }
+
+  const handleSetDefault = async (userId: string, companyId: string) => {
+    try {
+      await setUserDefaultCompany(userId, companyId)
+      setUserDefaultMap((prev) => ({ ...prev, [userId]: companyId }))
+    } catch (e: any) {
+      setProfileError(e?.message ?? 'Failed to set default company')
+    }
+  }
+
+  const handleRoleChange = async (userId: string, newRole: string) => {
+    setSavingId(userId)
+    try {
+      await updateUserProfile(userId, { role: newRole })
+      setProfiles((prev) => prev.map((p) => (p.id === userId ? { ...p, role: newRole } : p)))
+    } catch (e: any) {
+      setProfileError(e?.message ?? 'Failed to update role')
+    }
+    setSavingId(null)
+  }
 
   const permissions = useMemo(() => {
     getPermissions()
@@ -79,7 +154,7 @@ export function UserManagement() {
   return (
     <PageLayout
       title="User Management"
-      description="Configure menu access and CRUD permissions per user type"
+      description="Manage user roles, menu access, and CRUD permissions"
       actions={
         confirmReset ? (
           <div className="flex items-center gap-2">
@@ -92,7 +167,6 @@ export function UserManagement() {
         )
       }
     >
-
       {/* Tabs */}
       <div className="flex gap-1 mb-6 bg-[#f3f3f3] rounded-lg p-1 w-fit">
         <button
@@ -106,6 +180,18 @@ export function UserManagement() {
           className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${activeTab === 'crud' ? 'bg-white text-[#0070d2] shadow-sm' : 'text-[#514f4d] hover:text-[#16325c]'}`}
         >
           CRUD Permissions
+        </button>
+        <button
+          onClick={() => setActiveTab('roles')}
+          className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${activeTab === 'roles' ? 'bg-white text-[#0070d2] shadow-sm' : 'text-[#514f4d] hover:text-[#16325c]'}`}
+        >
+          User Roles
+        </button>
+        <button
+          onClick={() => setActiveTab('companies')}
+          className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${activeTab === 'companies' ? 'bg-white text-[#0070d2] shadow-sm' : 'text-[#514f4d] hover:text-[#16325c]'}`}
+        >
+          Company Access
         </button>
       </div>
 
@@ -241,9 +327,182 @@ export function UserManagement() {
         </div>
       )}
 
+      {activeTab === 'roles' && (
+        <div className="bg-white border border-[#dddbda] rounded-lg shadow-sm overflow-hidden">
+          <div className="px-5 py-3.5 border-b border-[#dddbda] flex items-center justify-between">
+            <span className="text-sm font-bold text-[#16325c]">User Roles</span>
+            <button
+              onClick={loadProfiles}
+              disabled={profilesLoading}
+              className="px-3 py-1.5 text-xs font-semibold text-[#514f4d] bg-white border border-[#dddbda] rounded hover:bg-[#f3f3f3] transition-colors disabled:opacity-50"
+            >
+              {profilesLoading ? 'Loading...' : 'Refresh'}
+            </button>
+          </div>
+
+          {profileError && (
+            <div className="mx-5 mt-3 px-4 py-2 bg-[#fef0f0] border border-[#c23934] rounded text-xs text-[#c23934]">
+              {profileError}
+            </div>
+          )}
+
+          <div className="divide-y divide-[#dddbda]">
+            {/* Header row */}
+            <div className="grid grid-cols-[1fr_1fr_140px] gap-4 px-5 py-3 bg-[#f3f3f3] text-[11px] font-bold text-[#514f4d] uppercase tracking-wider">
+              <span>Email</span>
+              <span>Name</span>
+              <span>Role</span>
+            </div>
+
+            {profiles.length === 0 && !profilesLoading && (
+              <div className="px-5 py-8 text-center text-sm text-slate-400 italic">
+                {profileError ? 'Failed to load users.' : 'No users found.'}
+              </div>
+            )}
+
+            {profilesLoading && (
+              <div className="px-5 py-8 text-center text-sm text-[#514f4d]">
+                Loading users...
+              </div>
+            )}
+
+            {profiles.map((p) => (
+              <div key={p.id} className="px-5 py-3 hover:bg-[#fafaf9] transition-colors">
+                <div className="grid grid-cols-[1fr_1fr_140px] gap-4 items-center text-sm">
+                  <span className="text-[#514f4d] truncate">{p.email}</span>
+                  <span className="text-[#514f4d] truncate">{p.name ?? '-'}</span>
+                  <div>
+                    <select
+                      value={p.role}
+                      onChange={(e) => handleRoleChange(p.id, e.target.value)}
+                      disabled={savingId === p.id}
+                      className="w-full px-2 py-1.5 text-xs border border-[#dddbda] rounded bg-white text-[#16325c] focus:outline-none focus:border-[#0070d2] disabled:opacity-50"
+                    >
+                      {ROLE_OPTIONS.map((opt) => (
+                        <option key={opt.value} value={opt.value}>{opt.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'companies' && (
+        <div className="bg-white border border-[#dddbda] rounded-lg shadow-sm overflow-hidden">
+          <div className="px-5 py-3.5 border-b border-[#dddbda] flex items-center justify-between">
+            <span className="text-sm font-bold text-[#16325c]">Company Access</span>
+            <button
+              onClick={loadProfiles}
+              disabled={profilesLoading}
+              className="px-3 py-1.5 text-xs font-semibold text-[#514f4d] bg-white border border-[#dddbda] rounded hover:bg-[#f3f3f3] transition-colors disabled:opacity-50"
+            >
+              {profilesLoading ? 'Loading...' : 'Refresh'}
+            </button>
+          </div>
+
+          {profileError && (
+            <div className="mx-5 mt-3 px-4 py-2 bg-[#fef0f0] border border-[#c23934] rounded text-xs text-[#c23934]">
+              {profileError}
+            </div>
+          )}
+
+          {allCompanies.length === 0 && !profilesLoading && (
+            <div className="px-5 py-8 text-center text-sm text-slate-400 italic">
+              No companies found. Create one in Settings &rarr; Companies first.
+            </div>
+          )}
+
+          {allCompanies.length > 0 && (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-[#f3f3f3] text-[11px] font-bold text-[#514f4d] uppercase tracking-wider">
+                    <th className="px-5 py-3 text-left whitespace-nowrap">User</th>
+                    {allCompanies.map((c) => (
+                      <th key={c.id} className="px-3 py-3 text-center whitespace-nowrap" title={c.name}>
+                        {c.code}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[#dddbda]">
+                  {profiles.length === 0 && !profilesLoading && (
+                    <tr>
+                      <td colSpan={allCompanies.length + 1} className="px-5 py-8 text-center text-slate-400 italic">
+                        No users found.
+                      </td>
+                    </tr>
+                  )}
+                  {profilesLoading && (
+                    <tr>
+                      <td colSpan={allCompanies.length + 1} className="px-5 py-8 text-center text-[#514f4d]">
+                        Loading users...
+                      </td>
+                    </tr>
+                  )}
+                  {profiles.map((p) => {
+                    const userCompanies = userCompanyMap[p.id] ?? []
+                    const userDefault = userDefaultMap[p.id]
+                    return (
+                      <tr key={p.id} className="hover:bg-[#fafaf9] transition-colors">
+                        <td className="px-5 py-3 text-[#514f4d] whitespace-nowrap">
+                          <div className="text-sm font-medium text-[#16325c]">{p.email}</div>
+                          {p.name && <div className="text-[11px] text-[#514f4d]">{p.name}</div>}
+                        </td>
+                        {allCompanies.map((c) => {
+                          const hasAccess = userCompanies.includes(c.id)
+                          const isDefault = userDefault === c.id
+                          return (
+                            <td key={c.id} className="px-3 py-3 text-center">
+                              <div className="flex items-center justify-center gap-1.5">
+                                {/* Access checkbox */}
+                                <button
+                                  type="button"
+                                  onClick={() => toggleCompanyAccess(p.id, c.id, !hasAccess)}
+                                  title={hasAccess ? `Revoke access to ${c.name}` : `Grant access to ${c.name}`}
+                                  className={`w-5 h-5 rounded border transition-colors flex items-center justify-center ${
+                                    hasAccess
+                                      ? 'bg-[#0070d2] border-[#0070d2] text-white hover:bg-[#005fb2]'
+                                      : 'bg-white border-[#dddbda] hover:border-[#0070d2]'
+                                  }`}
+                                >
+                                  {hasAccess && <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" /></svg>}
+                                </button>
+                                {/* Default radio */}
+                                <button
+                                  type="button"
+                                  onClick={() => hasAccess && handleSetDefault(p.id, c.id)}
+                                  disabled={!hasAccess}
+                                  title={isDefault ? 'Default company' : hasAccess ? 'Set as default company' : 'Grant access first'}
+                                  className={`w-4 h-4 rounded-full border transition-colors flex items-center justify-center ${
+                                    isDefault
+                                      ? 'bg-[#0070d2] border-[#0070d2]'
+                                      : hasAccess
+                                        ? 'bg-white border-[#dddbda] hover:border-[#0070d2] cursor-pointer'
+                                        : 'bg-white border-[#dddbda] opacity-30'
+                                  }`}
+                                >
+                                  {isDefault && <span className="w-1.5 h-1.5 rounded-full bg-white" />}
+                                </button>
+                              </div>
+                            </td>
+                          )
+                        })}
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
       <p className="text-xs text-[#514f4d] mt-4">
-        Changes saved to browser automatically. Menu access controls which pages users see;
-        CRUD permissions control what they can do on each page.
+        Menu access and CRUD permissions are saved to browser. User roles and company access are saved to the database.
       </p>
     </PageLayout>
   )

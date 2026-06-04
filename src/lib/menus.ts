@@ -22,7 +22,7 @@ export function isGroup(item: MenuItem): item is MenuGroup {
  *  Add new pages here and they automatically appear in the sidebar,
  *  permission system, and User Management. */
 export const ALL_MENUS: MenuItem[] = [
-  { key: 'dashboard',   label: 'Dashboard',        route: '/',                module: 'Overview' },
+  { key: 'dashboard',   label: 'Home',        route: '/',                module: 'Overview' },
   {
     key: 'transactions',
     label: 'Transactions',
@@ -43,6 +43,7 @@ export const ALL_MENUS: MenuItem[] = [
       { key: 'reports',      label: 'Financial Reports',   route: '/reports',                      module: 'Reporting' },
       { key: 'allocation-report-analysis', label: 'Allocation Report Analysis', route: '/allocation-report-analysis', module: 'Reporting' },
       { key: 'expense-type-analysis',    label: 'Expense Type Analysis',     route: '/expense-type-analysis',    module: 'Reporting' },
+      { key: 'bank-report',              label: 'Bank Report',               route: '/bank-report',              module: 'Reporting' },
     ],
   },
   {
@@ -59,6 +60,7 @@ export const ALL_MENUS: MenuItem[] = [
     module: 'Administration',
     children: [
       { key: 'accountant',       label: 'Chart of Accounts',    route: '/accounts',             module: 'Administration' },
+      { key: 'paymentmodes',    label: 'Bank Accounts',       route: '/payment-modes',        module: 'Administration' },
       { key: 'allocationmappings', label: 'Allocation Codes', route: '/allocation-mappings',  module: 'Administration' },
       { key: 'allocationtypes',    label: 'Allocation Types', route: '/allocation-types',     module: 'Administration' },
       { key: 'accountingperiods',  label: 'Accounting Periods',  route: '/accounting-periods',   module: 'Administration' },
@@ -70,7 +72,16 @@ export const ALL_MENUS: MenuItem[] = [
     module: 'Administration',
     children: [
       { key: 'user-sessions', label: 'User Sessions',    route: '/user-sessions', module: 'Administration' },
-      { key: 'usermgmt',      label: 'User Management',  route: '/usermgmt',      module: 'Administration' },
+      { key: 'companies',    label: 'Companies',        route: '/companies',    module: 'Administration' },
+    ],
+  },
+  {
+    key: 'security',
+    label: 'Security',
+    module: 'Administration',
+    children: [
+      { key: 'usermgmt',     label: 'User Management',  route: '/usermgmt',     module: 'Administration' },
+      { key: 'audit-trail',  label: 'Audit Trail',      route: '/audit-trail',  module: 'Administration' },
     ],
   },
 ]

@@ -1,9 +1,11 @@
 import { useState, useCallback } from 'react'
 import { supabase, isOnline } from '../lib/supabase'
+import { useCompany } from '../contexts/CompanyContext'
 import { buildDemoAccounts, buildDemoJournalEntries, buildDemoTrialBalance } from '../lib/demo'
 import type { TrialBalanceRow } from '../types'
 
 export function useTrialBalance() {
+  const { currentCompany } = useCompany()
   const [rows, setRows] = useState<TrialBalanceRow[]>([])
   const [loading, setLoading] = useState(false)
   const [generating, setGenerating] = useState(false)
@@ -44,6 +46,7 @@ export function useTrialBalance() {
       .from('trial_balances')
       .select('*, account:accounts(*)')
       .eq('period_id', periodId)
+      .eq('company_id', currentCompany?.id)
 
     if (fetchError) {
       setError(fetchError.message)
@@ -74,7 +77,7 @@ export function useTrialBalance() {
     setIsDemo(false)
     setGenerating(false)
     setLoading(false)
-  }, [])
+  }, [currentCompany?.id])
 
   return { rows, loading, generating, error, isDemo, totalDebit, totalCredit, generate }
 }

@@ -8,6 +8,7 @@ export interface Account {
   is_cash_account: boolean
   allocation_allow: boolean
   description: string | null
+  company_id?: string | null
   created_at: string
   updated_at: string
   children?: Account[]
@@ -24,6 +25,7 @@ export interface JournalEntry {
   total_credit: number
   status: JournalEntryStatus
   period_id?: string | null
+  company_id?: string | null
   created_by: string | null
   created_by_name: string | null
   created_at: string
@@ -46,6 +48,7 @@ export interface JournalEntryItemAllocation {
   allocation_code: string
   expense_type: string | null
   amount: number
+  company_id?: string | null
 }
 
 export interface JournalEntryItem {
@@ -55,6 +58,7 @@ export interface JournalEntryItem {
   debit: number
   credit: number
   description: string | null
+  company_id?: string | null
   account?: Account
   allocations?: JournalEntryItemAllocation[]
 }
@@ -68,6 +72,7 @@ export interface LedgerEntry {
   credit: number
   balance: number
   description: string | null
+  company_id?: string | null
   created_at: string
   account?: Account
   journal_entry?: JournalEntry
@@ -76,8 +81,21 @@ export interface LedgerEntry {
 export interface Company {
   id: string
   name: string
+  code: string
   fiscal_year_start: string
   fiscal_year_end: string
+  registration_number: string | null
+  tax_id: string | null
+  currency: string
+  phone: string | null
+  email: string | null
+  website: string | null
+  address_line1: string | null
+  address_line2: string | null
+  city: string | null
+  state: string | null
+  postal_code: string | null
+  country: string | null
   created_at: string
 }
 
@@ -87,6 +105,7 @@ export interface TransactionType {
   name: string
   description: string | null
   default_dr_cr: 'dr' | 'cr'
+  company_id?: string | null
 }
 
 export interface AccountingPeriod {
@@ -95,6 +114,7 @@ export interface AccountingPeriod {
   start_date: string
   end_date: string
   status: 'open' | 'closed'
+  company_id?: string | null
 }
 
 export interface AllocationType {
@@ -116,6 +136,7 @@ export interface AllocationMapping {
   allocation_code: string
   description: string | null
   active: boolean
+  company_id?: string | null
   created_at: string
   updated_at: string
   gl_account?: Account

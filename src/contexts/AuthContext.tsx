@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect, useRef, useCallback, type ReactNode } from 'react'
 import { signInWithEmail, signUpWithEmail, signInWithGoogle, signInWithApple, signOut, getCurrentSession, type AuthUser } from '../lib/auth'
+import { supabase } from '../lib/supabase'
 import { registerSession, heartbeatSession, removeSession } from '../lib/sessionTracker'
 
 interface AuthContextType {
@@ -27,6 +28,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const isOnline = !!import.meta.env.VITE_SUPABASE_URL && !!import.meta.env.VITE_SUPABASE_ANON_KEY
 
   useEffect(() => {
+    if (user?.id) {
+      localStorage.setItem('tolmai_user_id', user.id)
+    } else {
+      localStorage.removeItem('tolmai_user_id')
+    }
+  }, [user])
+
+  useEffect(() => {
     const init = async () => {
       if (isOnline) {
         const stored = localStorage.getItem('tolmai_session')
@@ -40,24 +49,35 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     init()
   }, [isOnline])
 
-  const resolveRole = (email: string, metadata?: Record<string, unknown>) => {
-    const fromMetadata = metadata?.role as string | undefined
-    if (fromMetadata && ['Superuser', 'Manager', 'Team Leader', 'User'].includes(fromMetadata)) return fromMetadata
+  const fetchProfile = async (userId: string, email: string): Promise<{ role: string; avatar_url: string | null }> => {
+    try {
+      const { data: profile, error: profileErr } = await supabase!
+        .from('user_profiles')
+        .select('role, avatar_url')
+        .eq('id', userId)
+        .single()
+      if (!profileErr && profile) {
+        if (profile.role && ['Superuser', 'Manager', 'Team Leader', 'User'].includes(profile.role)) {
+          return { role: profile.role, avatar_url: profile.avatar_url ?? null }
+        }
+      }
+    } catch {}
     const adminEmail = import.meta.env.VITE_ADMIN_EMAIL as string | undefined
-    if (adminEmail && email.toLowerCase() === adminEmail.toLowerCase()) return 'Superuser'
-    return 'User'
+    if (adminEmail && email.toLowerCase() === adminEmail.toLowerCase()) return { role: 'Superuser', avatar_url: null }
+    return { role: 'User', avatar_url: null }
   }
 
   const login = async (email: string, password: string) => {
     const data = await signInWithEmail(email, password)
     const u = data.user
     if (u) {
+      const { role, avatar_url } = await fetchProfile(u.id, u.email ?? '')
       const resolved: AuthUser = {
         id: u.id,
         email: u.email ?? '',
         name: u.user_metadata?.name ?? u.email ?? '',
-        avatar_url: u.user_metadata?.avatar_url ?? null,
-        role: resolveRole(u.email ?? '', u.user_metadata as Record<string, unknown> | undefined),
+        avatar_url,
+        role,
       }
       setUser(resolved)
       setSessionFlag()
@@ -69,12 +89,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const data = await signUpWithEmail(email, password, name)
     const u = data.user
     if (u) {
+      const { role, avatar_url } = await fetchProfile(u.id, u.email ?? '')
       const resolved: AuthUser = {
         id: u.id,
         email: u.email ?? '',
         name: name,
-        avatar_url: null,
-        role: resolveRole(email),
+        avatar_url,
+        role,
       }
       setUser(resolved)
       registerSession(resolved)

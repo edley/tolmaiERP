@@ -1,4 +1,5 @@
 import { useState, useMemo, useRef } from 'react'
+import { useCompany } from '../../contexts/CompanyContext'
 import { Plus, Trash2, ToggleLeft, ToggleRight, Pencil, Save, X, ArrowLeft } from 'lucide-react'
 import { PageLayout } from '../../components/PageLayout'
 import { DataTable } from '../../components/DataTable'
@@ -13,6 +14,7 @@ import type { AllocationMapping } from '../../types'
 type ViewMode = 'list' | 'detail' | 'new'
 
 export function AllocationMappings() {
+  const { currentCompany } = useCompany()
   const { accounts } = useAccounts()
   const { crud } = useRBAC()
   const canCreate = crud('allocation_mapping', 'create')
@@ -289,7 +291,7 @@ export function AllocationMappings() {
       }
     >
       {/* New code modal */}
-      <Modal open={showNewModal} onClose={() => setShowNewModal(false)} title="New Allocation Code">
+      <Modal open={showNewModal} onClose={() => setShowNewModal(false)} title="New Allocation Code" companyName={currentCompany?.name}>
         <div className="space-y-4">
           {codeError && (
             <div className="p-3 bg-[#fef0f0] border border-[#c23934] rounded text-xs text-[#c23934]">{codeError}</div>

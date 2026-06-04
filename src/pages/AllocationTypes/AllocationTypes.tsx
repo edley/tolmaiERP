@@ -1,4 +1,5 @@
 import { useState, useMemo, useRef } from 'react'
+import { useCompany } from '../../contexts/CompanyContext'
 import { Plus, Trash2, ToggleLeft, ToggleRight, Pencil, Save, X, ArrowLeft } from 'lucide-react'
 import { PageLayout } from '../../components/PageLayout'
 import { DataTable } from '../../components/DataTable'
@@ -13,6 +14,7 @@ import type { AllocationType } from '../../types'
 type ViewMode = 'list' | 'detail' | 'new'
 
 export function AllocationTypes() {
+  const { currentCompany } = useCompany()
   const { accounts } = useAccounts()
   const { crud } = useRBAC()
   const canCreate = crud('allocation_type', 'create')
@@ -282,7 +284,7 @@ export function AllocationTypes() {
         ) : undefined
       }
     >
-      <Modal open={showNewModal} onClose={() => setShowNewModal(false)} title="New Allocation Type">
+      <Modal open={showNewModal} onClose={() => setShowNewModal(false)} title="New Allocation Type" companyName={currentCompany?.name}>
         <div className="space-y-4">
           {typeError && (
             <div className="p-3 bg-[#fef0f0] border border-[#c23934] rounded text-xs text-[#c23934]">{typeError}</div>

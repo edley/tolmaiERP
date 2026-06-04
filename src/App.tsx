@@ -2,6 +2,8 @@ import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import { Layout } from './components/Layout'
 import { ProtectedRoute } from './components/ProtectedRoute'
 import { PeriodProvider } from './contexts/PeriodContext'
+import { CompanyProvider } from './contexts/CompanyContext'
+import { ThemeProvider } from './contexts/ThemeContext'
 import { Dashboard } from './pages/Dashboard'
 import { ChartOfAccounts } from './pages/ChartOfAccounts'
 import { JournalEntries } from './pages/JournalEntries'
@@ -14,6 +16,8 @@ import { Signup } from './pages/Signup'
 import { Settings } from './pages/Settings'
 import { UserManagement } from './pages/UserManagement'
 import { UserSession } from './pages/UserSession'
+import { AuditTrailPage } from './pages/AuditTrail'
+import { PaymentModes } from './pages/PaymentModes'
 import { AccountingPeriods } from './pages/AccountingPeriods'
 import { TrialBalance } from './pages/TrialBalance'
 import { AllocationMappings } from './pages/AllocationMappings'
@@ -21,6 +25,8 @@ import { AllocationTypes } from './pages/AllocationTypes'
 import { AllocationReportAnalysis } from './pages/AllocationReportAnalysis/AllocationReportAnalysis'
 import { ExpenseTypeAnalysis } from './pages/ExpenseTypeAnalysis'
 import { PendingPosting } from './pages/PendingPosting'
+import { Companies } from './pages/Companies'
+import { BankReport } from './pages/BankReport'
 
 function App() {
   return (
@@ -29,7 +35,7 @@ function App() {
         <Route path="/login" element={<Login />} />
         <Route path="/signup" element={<Signup />} />
         <Route element={<ProtectedRoute />}>
-          <Route element={<PeriodProvider><Layout /></PeriodProvider>}>
+            <Route element={<ThemeProvider><CompanyProvider><PeriodProvider><Layout /></PeriodProvider></CompanyProvider></ThemeProvider>}>
             <Route path="/" element={<Dashboard />} />
             <Route path="/accounts" element={<ChartOfAccounts />} />
             <Route path="/journal-entries" element={<JournalEntries />} />
@@ -44,9 +50,13 @@ function App() {
             <Route path="/settings" element={<Settings />} />
             <Route path="/allocation-mappings" element={<AllocationMappings />} />
             <Route path="/allocation-types" element={<AllocationTypes />} />
+            <Route path="/payment-modes" element={<PaymentModes />} />
             <Route path="/accounting-periods" element={<AccountingPeriods />} />
             <Route path="/usermgmt" element={<UserManagement />} />
             <Route path="/user-sessions" element={<UserSession />} />
+            <Route path="/audit-trail" element={<AuditTrailPage />} />
+            <Route path="/companies" element={<Companies />} />
+            <Route path="/bank-report" element={<BankReport />} />
           </Route>
         </Route>
       </Routes>

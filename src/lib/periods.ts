@@ -1,5 +1,8 @@
 import type { AccountingPeriod } from '../types'
 
+const BASE_KEY = 'accounting_periods'
+const PERIOD_ID_KEY = 'current_period_id'
+
 function uid(): string {
   return crypto.randomUUID()
 }
@@ -25,21 +28,42 @@ function buildDemoPeriods(): AccountingPeriod[] {
 
 let currentPeriods: AccountingPeriod[] | null = null
 let currentPeriodId: string | null = null
+let currentCompanyId: string | null = null
 
 const OLD_ID_RE = /^period-\d+-/
 
+function scopedKey(base: string): string {
+  const cid = localStorage.getItem('tolmai_company_id')
+  return cid ? `${base}_${cid}` : base
+}
+
 export function getPeriods(): AccountingPeriod[] {
-  if (currentPeriods) return currentPeriods
+  const cid = localStorage.getItem('tolmai_company_id') ?? null
+  if (currentPeriods && currentCompanyId === cid) return currentPeriods
+  currentCompanyId = cid
+  const key = scopedKey(BASE_KEY)
   try {
-    const stored = localStorage.getItem('accounting_periods')
+    const stored = localStorage.getItem(key)
     if (stored) {
       currentPeriods = JSON.parse(stored)
       if (currentPeriods!.some((p) => OLD_ID_RE.test(p.id))) {
         currentPeriods = null
-        localStorage.removeItem('accounting_periods')
+        localStorage.removeItem(key)
       } else {
         return currentPeriods!
       }
+    }
+  } catch { /* ignore */ }
+  // migrate from unscoped key
+  try {
+    const stored = localStorage.getItem(BASE_KEY)
+    if (stored) {
+      currentPeriods = JSON.parse(stored)
+      if (currentPeriods && !currentPeriods.some((p) => OLD_ID_RE.test(p.id))) {
+        localStorage.setItem(key, stored)
+        localStorage.removeItem(BASE_KEY)
+      }
+      if (currentPeriods) return currentPeriods!
     }
   } catch { /* ignore */ }
   currentPeriods = buildDemoPeriods()
@@ -48,16 +72,28 @@ export function getPeriods(): AccountingPeriod[] {
 
 export function savePeriods(periods: AccountingPeriod[]) {
   currentPeriods = periods
-  localStorage.setItem('accounting_periods', JSON.stringify(periods))
+  localStorage.setItem(scopedKey(BASE_KEY), JSON.stringify(periods))
 }
 
 export function getCurrentPeriodId(): string {
-  if (currentPeriodId) return currentPeriodId
+  const cid = localStorage.getItem('tolmai_company_id') ?? null
+  if (currentPeriodId && currentCompanyId === cid) return currentPeriodId
+  const key = scopedKey(PERIOD_ID_KEY)
   try {
-    const stored = localStorage.getItem('current_period_id')
+    const stored = localStorage.getItem(key)
     if (stored && !OLD_ID_RE.test(stored)) return stored
   } catch { /* ignore */ }
-  localStorage.removeItem('current_period_id')
+  // migrate from unscoped key
+  try {
+    const stored = localStorage.getItem(PERIOD_ID_KEY)
+    if (stored && !OLD_ID_RE.test(stored)) {
+      localStorage.setItem(key, stored)
+      localStorage.removeItem(PERIOD_ID_KEY)
+      currentPeriodId = stored
+      return stored
+    }
+  } catch { /* ignore */ }
+  localStorage.removeItem(key)
   const periods = getPeriods()
   const now = new Date()
   const found = periods.find((p) => {
@@ -73,7 +109,7 @@ export function getCurrentPeriodId(): string {
 
 export function setCurrentPeriodId(id: string) {
   currentPeriodId = id
-  localStorage.setItem('current_period_id', id)
+  localStorage.setItem(scopedKey(PERIOD_ID_KEY), id)
 }
 
 export function addPeriod(period: Omit<AccountingPeriod, 'id'>): AccountingPeriod {
@@ -100,13 +136,13 @@ export function deletePeriod(id: string) {
   savePeriods(filtered)
   if (currentPeriodId === id) {
     currentPeriodId = null
-    localStorage.removeItem('current_period_id')
+    localStorage.removeItem(scopedKey(PERIOD_ID_KEY))
   }
 }
 
 export function resetPeriods() {
   currentPeriods = null
   currentPeriodId = null
-  localStorage.removeItem('accounting_periods')
-  localStorage.removeItem('current_period_id')
+  localStorage.removeItem(scopedKey(BASE_KEY))
+  localStorage.removeItem(scopedKey(PERIOD_ID_KEY))
 }

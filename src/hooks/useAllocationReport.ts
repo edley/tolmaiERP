@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react'
 import { supabase, isOnline } from '../lib/supabase'
+import { useCompany } from '../contexts/CompanyContext'
 import type { Account, AccountingPeriod } from '../types'
 
 export interface AllocationReportRow {
@@ -87,6 +88,7 @@ function buildDemoReport(periodId: string, glCode: string, _accounts: Account[],
 }
 
 export function useAllocationReport() {
+  const { currentCompany } = useCompany()
   const [rows, setRows] = useState<AllocationReportRow[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -123,10 +125,12 @@ export function useAllocationReport() {
 
       const results: AllocationReportRow[] = []
 
+      const cid = currentCompany?.id
       const { data: payments } = await supabase
         .from('payment_line_allocations')
         .select('*, payment_line:payment_lines!inner(payment_id, gl_account_id, amount, payment:payments!inner(voucher_number, date, period_id))')
         .eq('payment_line.payment.period_id', periodId)
+        .eq('payment_line.payment.company_id', cid)
         .eq('payment_line.gl_account_id', glAccount.id)
 
       if (payments) {
@@ -149,6 +153,7 @@ export function useAllocationReport() {
         .from('receipt_line_allocations')
         .select('*, receipt_line:receipt_lines!inner(receipt_id, gl_account_id, amount, receipt:receipts!inner(voucher_number, date, period_id))')
         .eq('receipt_line.receipt.period_id', periodId)
+        .eq('receipt_line.receipt.company_id', cid)
         .eq('receipt_line.gl_account_id', glAccount.id)
 
       if (receipts) {
@@ -171,6 +176,7 @@ export function useAllocationReport() {
         .from('journal_entry_item_allocations')
         .select('*, item:journal_entry_items!inner(journal_entry_id, account_id, amount, entry:journal_entries!inner(entry_number, posting_date, period_id))')
         .eq('item.entry.period_id', periodId)
+        .eq('item.entry.company_id', cid)
         .eq('item.account_id', glAccount.id)
 
       if (jeAllocs) {
@@ -201,7 +207,7 @@ export function useAllocationReport() {
       setIsDemo(true)
     }
     setLoading(false)
-  }, [])
+  }, [currentCompany?.id])
 
   return { rows, loading, error, isDemo, totalAmount, run }
 }

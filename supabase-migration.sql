@@ -87,13 +87,14 @@ BEGIN
     start_d := make_date(y, m, 1);
     end_d := (start_d + INTERVAL '1 month' - INTERVAL '1 day')::DATE;
     INSERT INTO accounting_periods (name, start_date, end_date, status)
-    VALUES (
+    SELECT
       TO_CHAR(start_d, 'Month YYYY'),
       start_d,
       end_d,
       CASE WHEN end_d < CURRENT_DATE THEN 'closed' ELSE 'open' END
-    )
-    ON CONFLICT (name) DO NOTHING;
+    WHERE NOT EXISTS (
+      SELECT 1 FROM accounting_periods WHERE name = TO_CHAR(start_d, 'Month YYYY')
+    );
   END LOOP;
 END $$;
 
@@ -447,3 +448,467 @@ CREATE POLICY "Enable all access on journal_entry_item_allocations"
   ON journal_entry_item_allocations FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
 
 CREATE INDEX IF NOT EXISTS idx_je_item_allocations_item ON journal_entry_item_allocations(journal_entry_item_id);
+
+-- ============================================================
+-- 19. User Profiles table for role management
+-- ============================================================
+CREATE TABLE IF NOT EXISTS user_profiles (
+  id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+  email TEXT NOT NULL,
+  name TEXT,
+  role TEXT NOT NULL DEFAULT 'User' CHECK (role IN ('Superuser', 'Manager', 'Team Leader', 'User')),
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE user_profiles ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Enable all access on user_profiles" ON user_profiles;
+CREATE POLICY "Enable all access on user_profiles"
+  ON user_profiles FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+
+-- Auto-create profile row when a new user signs up via Supabase Auth
+CREATE OR REPLACE FUNCTION public.handle_new_user()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER SET search_path = ''
+AS $$
+BEGIN
+  INSERT INTO public.user_profiles (id, email, name, role)
+  VALUES (
+    NEW.id,
+    NEW.email,
+    NEW.raw_user_meta_data ->> 'name',
+    COALESCE(NEW.raw_user_meta_data ->> 'role', 'User')
+  )
+  ON CONFLICT (id) DO NOTHING;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
+CREATE TRIGGER on_auth_user_created
+  AFTER INSERT ON auth.users
+  FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
+
+-- Backfill profiles for existing users
+INSERT INTO public.user_profiles (id, email, name, role)
+SELECT
+  au.id,
+  au.email,
+  au.raw_user_meta_data ->> 'name',
+  COALESCE(au.raw_user_meta_data ->> 'role', 'User')
+FROM auth.users au
+WHERE NOT EXISTS (SELECT 1 FROM public.user_profiles up WHERE up.id = au.id)
+ON CONFLICT (id) DO NOTHING;
+
+-- ============================================================
+-- 20. Multi-Company Support
+-- ============================================================
+
+-- 20a. Companies table
+CREATE TABLE IF NOT EXISTS companies (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name TEXT NOT NULL,
+  code TEXT NOT NULL UNIQUE,
+  fiscal_year_start DATE NOT NULL DEFAULT '2026-01-01',
+  fiscal_year_end DATE NOT NULL DEFAULT '2026-12-31',
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE companies ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Enable all access on companies" ON companies;
+CREATE POLICY "Enable all access on companies"
+  ON companies FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+
+-- Seed the default company
+INSERT INTO companies (id, name, code, fiscal_year_start, fiscal_year_end)
+VALUES (
+  '00000000-0000-4000-8000-000000000001'::uuid,
+  'Default Company',
+  'DEFAULT',
+  date_trunc('year', CURRENT_DATE)::DATE,
+  (date_trunc('year', CURRENT_DATE) + INTERVAL '1 year' - INTERVAL '1 day')::DATE
+) ON CONFLICT (id) DO NOTHING;
+
+-- 20b. User-Company access table
+CREATE TABLE IF NOT EXISTS user_companies (
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  company_id UUID NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+  is_default BOOLEAN NOT NULL DEFAULT FALSE,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  PRIMARY KEY (user_id, company_id)
+);
+
+ALTER TABLE user_companies ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Enable all access on user_companies" ON user_companies;
+CREATE POLICY "Enable all access on user_companies"
+  ON user_companies FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+
+-- Link all existing users to the default company
+INSERT INTO user_companies (user_id, company_id, is_default)
+SELECT au.id, '00000000-0000-4000-8000-000000000001'::uuid, TRUE
+FROM auth.users au
+WHERE NOT EXISTS (
+  SELECT 1 FROM user_companies uc WHERE uc.user_id = au.id AND uc.company_id = '00000000-0000-4000-8000-000000000001'::uuid
+);
+
+-- 20c. Add company_id column to user_profiles
+ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS company_id UUID REFERENCES companies(id);
+UPDATE user_profiles SET company_id = '00000000-0000-4000-8000-000000000001'::uuid WHERE company_id IS NULL;
+ALTER TABLE user_profiles ALTER COLUMN company_id SET NOT NULL;
+
+-- RPC: List all user profiles (used by Superuser management page)
+DROP FUNCTION IF EXISTS public.get_user_profiles();
+CREATE FUNCTION public.get_user_profiles()
+RETURNS TABLE (
+  id UUID, email TEXT, name TEXT, role TEXT,
+  created_at TIMESTAMPTZ, updated_at TIMESTAMPTZ,
+  company_id UUID
+)
+LANGUAGE sql
+SECURITY DEFINER SET search_path = ''
+AS $$
+  SELECT up.id, up.email, up.name, up.role, up.created_at, up.updated_at, up.company_id
+  FROM public.user_profiles up
+  ORDER BY up.email;
+$$;
+
+-- 20d. Add company_id to business tables (accounts, periods, references)
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS company_id UUID REFERENCES companies(id);
+UPDATE accounts SET company_id = '00000000-0000-4000-8000-000000000001'::uuid WHERE company_id IS NULL;
+ALTER TABLE accounts ALTER COLUMN company_id SET NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_accounts_company ON accounts(company_id);
+
+ALTER TABLE accounting_periods ADD COLUMN IF NOT EXISTS company_id UUID REFERENCES companies(id);
+UPDATE accounting_periods SET company_id = '00000000-0000-4000-8000-000000000001'::uuid WHERE company_id IS NULL;
+ALTER TABLE accounting_periods ALTER COLUMN company_id SET NOT NULL;
+ALTER TABLE accounting_periods DROP CONSTRAINT IF EXISTS unique_period_name;
+CREATE INDEX IF NOT EXISTS idx_accounting_periods_company ON accounting_periods(company_id);
+
+ALTER TABLE payment_modes ADD COLUMN IF NOT EXISTS company_id UUID REFERENCES companies(id);
+UPDATE payment_modes SET company_id = '00000000-0000-4000-8000-000000000001'::uuid WHERE company_id IS NULL;
+ALTER TABLE payment_modes ALTER COLUMN company_id SET NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_payment_modes_company ON payment_modes(company_id);
+
+ALTER TABLE transaction_types ADD COLUMN IF NOT EXISTS company_id UUID REFERENCES companies(id);
+UPDATE transaction_types SET company_id = '00000000-0000-4000-8000-000000000001'::uuid WHERE company_id IS NULL;
+ALTER TABLE transaction_types ALTER COLUMN company_id SET NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_transaction_types_company ON transaction_types(company_id);
+
+ALTER TABLE allocation_mappings ADD COLUMN IF NOT EXISTS company_id UUID REFERENCES companies(id);
+UPDATE allocation_mappings SET company_id = '00000000-0000-4000-8000-000000000001'::uuid WHERE company_id IS NULL;
+ALTER TABLE allocation_mappings ALTER COLUMN company_id SET NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_allocation_mappings_company ON allocation_mappings(company_id);
+
+ALTER TABLE expense_types ADD COLUMN IF NOT EXISTS company_id UUID REFERENCES companies(id);
+UPDATE expense_types SET company_id = '00000000-0000-4000-8000-000000000001'::uuid WHERE company_id IS NULL;
+ALTER TABLE expense_types ALTER COLUMN company_id SET NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_expense_types_company ON expense_types(company_id);
+
+-- 20e. Add company_id to transaction tables
+ALTER TABLE journal_entries ADD COLUMN IF NOT EXISTS company_id UUID REFERENCES companies(id);
+UPDATE journal_entries SET company_id = '00000000-0000-4000-8000-000000000001'::uuid WHERE company_id IS NULL;
+ALTER TABLE journal_entries ALTER COLUMN company_id SET NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_journal_entries_company ON journal_entries(company_id);
+
+ALTER TABLE payments ADD COLUMN IF NOT EXISTS company_id UUID REFERENCES companies(id);
+UPDATE payments SET company_id = '00000000-0000-4000-8000-000000000001'::uuid WHERE company_id IS NULL;
+ALTER TABLE payments ALTER COLUMN company_id SET NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_payments_company ON payments(company_id);
+
+ALTER TABLE receipts ADD COLUMN IF NOT EXISTS company_id UUID REFERENCES companies(id);
+UPDATE receipts SET company_id = '00000000-0000-4000-8000-000000000001'::uuid WHERE company_id IS NULL;
+ALTER TABLE receipts ALTER COLUMN company_id SET NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_receipts_company ON receipts(company_id);
+
+ALTER TABLE ledger_entries ADD COLUMN IF NOT EXISTS company_id UUID REFERENCES companies(id);
+UPDATE ledger_entries SET company_id = '00000000-0000-4000-8000-000000000001'::uuid WHERE company_id IS NULL;
+ALTER TABLE ledger_entries ALTER COLUMN company_id SET NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_ledger_entries_company ON ledger_entries(company_id);
+
+ALTER TABLE trial_balances ADD COLUMN IF NOT EXISTS company_id UUID REFERENCES companies(id);
+UPDATE trial_balances SET company_id = '00000000-0000-4000-8000-000000000001'::uuid WHERE company_id IS NULL;
+ALTER TABLE trial_balances ALTER COLUMN company_id SET NOT NULL;
+ALTER TABLE trial_balances DROP CONSTRAINT IF EXISTS trial_balances_pkey;
+ALTER TABLE trial_balances ADD PRIMARY KEY (period_id, account_id, company_id);
+
+-- 20f. Update handle_new_user trigger to include company_id and auto-link to default company
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
+CREATE OR REPLACE FUNCTION public.handle_new_user()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER SET search_path = ''
+AS $$
+DECLARE
+  v_default_company_id UUID := '00000000-0000-4000-8000-000000000001'::uuid;
+BEGIN
+  INSERT INTO public.user_profiles (id, email, name, role, company_id)
+  VALUES (
+    NEW.id,
+    NEW.email,
+    NEW.raw_user_meta_data ->> 'name',
+    COALESCE(NEW.raw_user_meta_data ->> 'role', 'User'),
+    v_default_company_id
+  )
+  ON CONFLICT (id) DO NOTHING;
+
+  INSERT INTO public.user_companies (user_id, company_id, is_default)
+  VALUES (NEW.id, v_default_company_id, TRUE)
+  ON CONFLICT (user_id, company_id) DO NOTHING;
+
+  RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER on_auth_user_created
+  AFTER INSERT ON auth.users
+  FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
+
+-- 20g. RPC: get companies accessible by a user
+CREATE OR REPLACE FUNCTION public.get_user_companies(p_user_id UUID)
+RETURNS SETOF public.companies
+LANGUAGE sql
+SECURITY DEFINER SET search_path = ''
+AS $$
+  SELECT c.* FROM public.companies c
+  INNER JOIN public.user_companies uc ON uc.company_id = c.id
+  WHERE uc.user_id = p_user_id
+  ORDER BY c.name;
+$$;
+
+-- RPC: set default company for a user
+CREATE OR REPLACE FUNCTION public.set_default_company(p_user_id UUID, p_company_id UUID)
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER SET search_path = ''
+AS $$
+BEGIN
+  UPDATE public.user_companies SET is_default = FALSE WHERE user_id = p_user_id;
+  UPDATE public.user_companies SET is_default = TRUE WHERE user_id = p_user_id AND company_id = p_company_id;
+END;
+$$;
+
+-- 20h. Add company_id to child/detail tables (lines + allocations)
+ALTER TABLE journal_entry_items ADD COLUMN IF NOT EXISTS company_id UUID REFERENCES companies(id);
+UPDATE journal_entry_items SET company_id = je.company_id
+  FROM journal_entries je WHERE journal_entry_items.journal_entry_id = je.id AND journal_entry_items.company_id IS NULL;
+ALTER TABLE journal_entry_items ALTER COLUMN company_id SET NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_journal_entry_items_company ON journal_entry_items(company_id);
+
+ALTER TABLE payment_lines ADD COLUMN IF NOT EXISTS company_id UUID REFERENCES companies(id);
+UPDATE payment_lines SET company_id = p.company_id
+  FROM payments p WHERE payment_lines.payment_id = p.id AND payment_lines.company_id IS NULL;
+ALTER TABLE payment_lines ALTER COLUMN company_id SET NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_payment_lines_company ON payment_lines(company_id);
+
+ALTER TABLE receipt_lines ADD COLUMN IF NOT EXISTS company_id UUID REFERENCES companies(id);
+UPDATE receipt_lines SET company_id = r.company_id
+  FROM receipts r WHERE receipt_lines.receipt_id = r.id AND receipt_lines.company_id IS NULL;
+ALTER TABLE receipt_lines ALTER COLUMN company_id SET NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_receipt_lines_company ON receipt_lines(company_id);
+
+ALTER TABLE payment_line_allocations ADD COLUMN IF NOT EXISTS company_id UUID REFERENCES companies(id);
+UPDATE payment_line_allocations SET company_id = p.company_id
+  FROM payment_lines pl
+  INNER JOIN payments p ON p.id = pl.payment_id
+  WHERE payment_line_allocations.payment_line_id = pl.id AND payment_line_allocations.company_id IS NULL;
+ALTER TABLE payment_line_allocations ALTER COLUMN company_id SET NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_payment_line_allocations_company ON payment_line_allocations(company_id);
+
+ALTER TABLE receipt_line_allocations ADD COLUMN IF NOT EXISTS company_id UUID REFERENCES companies(id);
+UPDATE receipt_line_allocations SET company_id = r.company_id
+  FROM receipt_lines rl
+  INNER JOIN receipts r ON r.id = rl.receipt_id
+  WHERE receipt_line_allocations.receipt_line_id = rl.id AND receipt_line_allocations.company_id IS NULL;
+ALTER TABLE receipt_line_allocations ALTER COLUMN company_id SET NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_receipt_line_allocations_company ON receipt_line_allocations(company_id);
+
+ALTER TABLE journal_entry_item_allocations ADD COLUMN IF NOT EXISTS company_id UUID REFERENCES companies(id);
+UPDATE journal_entry_item_allocations SET company_id = je.company_id
+  FROM journal_entry_items jei
+  INNER JOIN journal_entries je ON je.id = jei.journal_entry_id
+  WHERE journal_entry_item_allocations.journal_entry_item_id = jei.id AND journal_entry_item_allocations.company_id IS NULL;
+ALTER TABLE journal_entry_item_allocations ALTER COLUMN company_id SET NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_journal_entry_item_allocations_company ON journal_entry_item_allocations(company_id);
+
+-- 20i. Update generate_trial_balance to be company-aware
+CREATE OR REPLACE FUNCTION public.generate_trial_balance(p_period_id UUID)
+RETURNS void AS $$
+DECLARE
+  v_company_id UUID;
+BEGIN
+  SELECT company_id INTO v_company_id FROM accounting_periods WHERE id = p_period_id;
+
+  DELETE FROM trial_balances WHERE period_id = p_period_id;
+
+  INSERT INTO trial_balances (period_id, account_id, debit, credit, company_id)
+  SELECT
+    p_period_id,
+    le.account_id,
+    COALESCE(SUM(le.debit), 0),
+    COALESCE(SUM(le.credit), 0),
+    v_company_id
+  FROM ledger_entries le
+  WHERE le.period_id = p_period_id
+  GROUP BY le.account_id;
+END;
+$$ LANGUAGE plpgsql;
+
+-- ============================================================
+-- 21. Add legal entity & contact fields to companies table
+-- ============================================================
+ALTER TABLE companies ADD COLUMN IF NOT EXISTS registration_number TEXT;
+ALTER TABLE companies ADD COLUMN IF NOT EXISTS tax_id TEXT;
+ALTER TABLE companies ADD COLUMN IF NOT EXISTS currency TEXT NOT NULL DEFAULT 'USD';
+ALTER TABLE companies ADD COLUMN IF NOT EXISTS phone TEXT;
+ALTER TABLE companies ADD COLUMN IF NOT EXISTS email TEXT;
+ALTER TABLE companies ADD COLUMN IF NOT EXISTS website TEXT;
+ALTER TABLE companies ADD COLUMN IF NOT EXISTS address_line1 TEXT;
+ALTER TABLE companies ADD COLUMN IF NOT EXISTS address_line2 TEXT;
+ALTER TABLE companies ADD COLUMN IF NOT EXISTS city TEXT;
+ALTER TABLE companies ADD COLUMN IF NOT EXISTS state TEXT;
+ALTER TABLE companies ADD COLUMN IF NOT EXISTS postal_code TEXT;
+ALTER TABLE companies ADD COLUMN IF NOT EXISTS country TEXT;
+
+-- ============================================================
+-- 22. Company-scoped UNIQUE constraints for multi-tenant isolation
+--     Every UNIQUE constraint on business data must include company_id
+--     to prevent cross-company collisions and data leaks.
+-- ============================================================
+
+-- 22a. journal_entries: entry_number UNIQUE → UNIQUE (company_id, entry_number)
+ALTER TABLE journal_entries DROP CONSTRAINT IF EXISTS journal_entries_entry_number_key;
+DO $$ BEGIN
+  ALTER TABLE journal_entries ADD CONSTRAINT uq_journal_entries_company_entry UNIQUE (company_id, entry_number);
+EXCEPTION WHEN duplicate_table THEN END; $$;
+
+-- 22b. payments: voucher_number UNIQUE → UNIQUE (company_id, voucher_number)
+ALTER TABLE payments DROP CONSTRAINT IF EXISTS payments_voucher_number_key;
+DO $$ BEGIN
+  ALTER TABLE payments ADD CONSTRAINT uq_payments_company_voucher UNIQUE (company_id, voucher_number);
+EXCEPTION WHEN duplicate_table THEN END; $$;
+
+-- 22c. receipts: voucher_number UNIQUE → UNIQUE (company_id, voucher_number)
+ALTER TABLE receipts DROP CONSTRAINT IF EXISTS receipts_voucher_number_key;
+DO $$ BEGIN
+  ALTER TABLE receipts ADD CONSTRAINT uq_receipts_company_voucher UNIQUE (company_id, voucher_number);
+EXCEPTION WHEN duplicate_table THEN END; $$;
+
+-- 22d. transaction_types: UNIQUE (code) → UNIQUE (company_id, code)
+ALTER TABLE transaction_types DROP CONSTRAINT IF EXISTS transaction_types_code_key;
+DO $$ BEGIN
+  ALTER TABLE transaction_types ADD CONSTRAINT uq_transaction_types_company_code UNIQUE (company_id, code);
+EXCEPTION WHEN duplicate_table THEN END; $$;
+
+-- 22e. expense_types: UNIQUE (gl_account_id, name) → UNIQUE (company_id, gl_account_id, name)
+ALTER TABLE expense_types DROP CONSTRAINT IF EXISTS expense_types_gl_account_id_name_key;
+DO $$ BEGIN
+  ALTER TABLE expense_types ADD CONSTRAINT uq_expense_types_company_gl_name UNIQUE (company_id, gl_account_id, name);
+EXCEPTION WHEN duplicate_table THEN END; $$;
+
+-- 22f. allocation_mappings: UNIQUE (gl_code, allocation_code) → UNIQUE (company_id, gl_code, allocation_code)
+ALTER TABLE allocation_mappings ADD COLUMN IF NOT EXISTS gl_code TEXT;
+ALTER TABLE allocation_mappings DROP CONSTRAINT IF EXISTS allocation_mappings_gl_code_allocation_code_key;
+DO $$ BEGIN
+  ALTER TABLE allocation_mappings ADD CONSTRAINT uq_allocation_mappings_company_gl_alloc UNIQUE (company_id, gl_code, allocation_code);
+EXCEPTION WHEN duplicate_table THEN END; $$;
+
+-- 22g. companies.code should remain globally UNIQUE (cross-company uniqueness is correct for company codes)
+
+-- 22h. user_profiles: add missing company_id index
+CREATE INDEX IF NOT EXISTS idx_user_profiles_company ON user_profiles(company_id);
+
+-- ============================================================
+-- 23. Add bank account detail columns to payment_modes
+-- ============================================================
+ALTER TABLE payment_modes ADD COLUMN IF NOT EXISTS bank_account_no TEXT DEFAULT '';
+ALTER TABLE payment_modes ADD COLUMN IF NOT EXISTS address TEXT DEFAULT '';
+ALTER TABLE payment_modes ADD COLUMN IF NOT EXISTS location TEXT DEFAULT '';
+ALTER TABLE payment_modes ADD COLUMN IF NOT EXISTS account_type TEXT DEFAULT '';
+
+-- ============================================================
+-- 24. User Tasks table (per-user, per-company todo list)
+-- ============================================================
+CREATE TABLE IF NOT EXISTS user_tasks (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  text TEXT NOT NULL,
+  completed BOOLEAN NOT NULL DEFAULT FALSE,
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  company_id UUID NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Add columns added in a later iteration (safe to re-run)
+ALTER TABLE user_tasks ADD COLUMN IF NOT EXISTS due_date DATE;
+ALTER TABLE user_tasks ADD COLUMN IF NOT EXISTS completion_percentage SMALLINT NOT NULL DEFAULT 0;
+
+-- Drop and re-add the check constraint to allow reruns
+ALTER TABLE user_tasks DROP CONSTRAINT IF EXISTS user_tasks_completion_percentage_check;
+ALTER TABLE user_tasks ADD CONSTRAINT user_tasks_completion_percentage_check
+  CHECK (completion_percentage >= 0 AND completion_percentage <= 100);
+
+ALTER TABLE user_tasks ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "User-scoped access on user_tasks" ON user_tasks;
+CREATE POLICY "User-scoped access on user_tasks"
+  ON user_tasks FOR ALL TO authenticated
+  USING (user_id = auth.uid() AND company_id IN (SELECT public.user_company_ids()))
+  WITH CHECK (user_id = auth.uid() AND company_id IN (SELECT public.user_company_ids()));
+
+CREATE INDEX IF NOT EXISTS idx_user_tasks_user_company ON user_tasks(user_id, company_id);
+
+-- ============================================================
+-- 25. Waitlist Signups
+-- ============================================================
+CREATE TABLE IF NOT EXISTS waitlist_signups (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  email TEXT NOT NULL,
+  user_id UUID REFERENCES auth.users(id) ON DELETE SET NULL,
+  company_id UUID,
+  source TEXT DEFAULT 'app',
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE waitlist_signups ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Enable insert for all on waitlist_signups" ON waitlist_signups;
+CREATE POLICY "Enable insert for all on waitlist_signups"
+  ON waitlist_signups FOR INSERT TO anon, authenticated
+  WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Enable select for authenticated on waitlist_signups" ON waitlist_signups;
+CREATE POLICY "Enable select for authenticated on waitlist_signups"
+  ON waitlist_signups FOR SELECT TO authenticated
+  USING (true);
+
+CREATE INDEX IF NOT EXISTS idx_waitlist_signups_email ON waitlist_signups(email);
+CREATE INDEX IF NOT EXISTS idx_waitlist_signups_created ON waitlist_signups(created_at);
+
+-- ============================================================
+-- 26. Avatar support
+-- ============================================================
+ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS avatar_url TEXT;
+
+-- Create storage bucket for avatars
+INSERT INTO storage.buckets (id, name, public, avif_autodetection, file_size_limit, allowed_mime_types)
+SELECT 'avatars', 'avatars', true, false, 2097152, ARRAY['image/png', 'image/jpeg', 'image/gif', 'image/webp'::text]
+WHERE NOT EXISTS (SELECT 1 FROM storage.buckets WHERE id = 'avatars');
+
+-- Allow authenticated users to upload their own avatar
+DROP POLICY IF EXISTS "Users can upload their own avatar" ON storage.objects;
+CREATE POLICY "Users can upload their own avatar" ON storage.objects
+  FOR INSERT TO authenticated
+  WITH CHECK (bucket_id = 'avatars' AND (storage.foldername(name))[1] = auth.uid()::text);
+
+DROP POLICY IF EXISTS "Users can update their own avatar" ON storage.objects;
+CREATE POLICY "Users can update their own avatar" ON storage.objects
+  FOR UPDATE TO authenticated
+  USING (bucket_id = 'avatars' AND (storage.foldername(name))[1] = auth.uid()::text);
+
+-- Avatars are public (anyone can view)
+DROP POLICY IF EXISTS "Anyone can view avatars" ON storage.objects;
+CREATE POLICY "Anyone can view avatars" ON storage.objects
+  FOR SELECT TO anon, authenticated
+  USING (bucket_id = 'avatars');

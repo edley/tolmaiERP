@@ -1,6 +1,7 @@
-import { createContext, useContext, useState, useCallback, useEffect, type ReactNode } from 'react'
+import { createContext, useContext, useState, useCallback, useEffect, useRef, type ReactNode } from 'react'
 import { getPeriods, getCurrentPeriodId, setCurrentPeriodId as savePeriodId, savePeriods } from '../lib/periods'
 import { supabase, isOnline } from '../lib/supabase'
+import { useCompany } from './CompanyContext'
 import type { AccountingPeriod } from '../types'
 
 interface PeriodContextType {
@@ -13,8 +14,10 @@ interface PeriodContextType {
 const PeriodContext = createContext<PeriodContextType | null>(null)
 
 export function PeriodProvider({ children }: { children: ReactNode }) {
+  const { currentCompany } = useCompany()
   const [, forceRender] = useState(0)
   const [synced, setSynced] = useState(false)
+  const prevCompanyRef = useRef<string | undefined>(undefined)
   const refresh = useCallback(() => forceRender((t) => t + 1), [])
 
   const periods = getPeriods()
@@ -27,10 +30,16 @@ export function PeriodProvider({ children }: { children: ReactNode }) {
   }, [refresh])
 
   useEffect(() => {
-    if (!isOnline() || !supabase || synced) return
-    setSynced(true)
+    const companyId = currentCompany?.id
+    if (!companyId) return
+    if (!isOnline() || !supabase) return
 
-    supabase.from('accounting_periods').select('*').order('start_date')
+    const companyChanged = prevCompanyRef.current !== undefined && prevCompanyRef.current !== companyId
+    if (synced && !companyChanged) return
+    prevCompanyRef.current = companyId
+    if (!synced) setSynced(true)
+
+    supabase.from('accounting_periods').select('*').eq('company_id', companyId).order('start_date')
       .then(({ data, error }) => {
         if (error) { console.error('Failed to fetch periods:', error.message); return }
         if (data && data.length > 0) {
@@ -63,13 +72,14 @@ export function PeriodProvider({ children }: { children: ReactNode }) {
               start_date: p.start_date,
               end_date: p.end_date,
               status: p.status,
+              company_id: companyId,
             }))
           ).then(({ error: insErr }) => {
             if (insErr) console.error('Failed to seed accounting_periods:', insErr.message)
           })
         }
       })
-  }, [])
+  }, [currentCompany?.id])
 
   return (
     <PeriodContext.Provider value={{ periods, currentPeriod, setCurrentPeriod, refresh }}>

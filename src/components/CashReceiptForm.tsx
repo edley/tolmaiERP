@@ -146,13 +146,19 @@ export function CashReceiptForm({ onClose, onSuccess, receipt }: CashReceiptForm
     if (!line) return
     setAllocLineId(lineId)
     setAllocError(null)
-    if (line.allocations.length === 0) {
-      setLines(lines.map((l) =>
-        l.id === lineId
-          ? { ...l, allocations: [{ code: '', expenseType: '', amount: '0' }] }
-          : l
-      ))
-    }
+    setLines(lines.map((l) => {
+      if (l.id !== lineId) return l
+      const filled = (!l.amount || parseFloat(l.amount) === 0) && vt > 0
+        ? String(vt)
+        : l.amount
+      return {
+        ...l,
+        amount: filled,
+        allocations: l.allocations.length === 0
+          ? [{ code: '', expenseType: '', amount: filled }]
+          : l.allocations,
+      }
+    }))
   }
 
   const addAllocRow = (lineId: number) => {

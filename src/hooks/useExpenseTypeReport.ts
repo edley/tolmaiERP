@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react'
 import { supabase, isOnline } from '../lib/supabase'
+import { useCompany } from '../contexts/CompanyContext'
 import type { Account, AccountingPeriod } from '../types'
 
 export interface ExpenseTypeReportRow {
@@ -80,6 +81,7 @@ function buildDemoReport(periodId: string, glCode: string, allocCode: string, ac
 }
 
 export function useExpenseTypeReport() {
+  const { currentCompany } = useCompany()
   const [rows, setRows] = useState<ExpenseTypeReportRow[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -122,6 +124,7 @@ export function useExpenseTypeReport() {
     const accId = glAccount.id
     const accName = glAccount.name
 
+    const cid = currentCompany?.id
     const results: ExpenseTypeReportRow[] = []
 
     async function fetchPayments() {
@@ -129,6 +132,7 @@ export function useExpenseTypeReport() {
         const { data: payments } = await supabase!
           .from('payments')
           .select('id, voucher_number, date')
+          .eq('company_id', cid)
           .eq('period_id', periodId)
         if (!payments || payments.length === 0) return
         const paymentIds = payments.map(p => p.id)
@@ -164,6 +168,7 @@ export function useExpenseTypeReport() {
         const { data: receipts } = await supabase!
           .from('receipts')
           .select('id, voucher_number, date')
+          .eq('company_id', cid)
           .eq('period_id', periodId)
         if (!receipts || receipts.length === 0) return
         const receiptIds = receipts.map(r => r.id)
@@ -199,6 +204,7 @@ export function useExpenseTypeReport() {
         const { data: entries } = await supabase!
           .from('journal_entries')
           .select('id, entry_number, posting_date')
+          .eq('company_id', cid)
           .eq('period_id', periodId)
         if (!entries || entries.length === 0) return
         const entryIds = entries.map(e => e.id)
@@ -247,7 +253,7 @@ export function useExpenseTypeReport() {
       setError(null)
     }
     setLoading(false)
-  }, [])
+  }, [currentCompany?.id])
 
   return { rows, loading, error, isDemo, totalAmount, run }
 }

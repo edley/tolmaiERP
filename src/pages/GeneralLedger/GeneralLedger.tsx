@@ -137,6 +137,11 @@ export function GeneralLedger() {
       </div>
 
       <DemoBanner visible={isDemo} error={error} />
+      {error && !isDemo && (
+        <div className="rounded-lg px-4 py-3 mb-6 bg-red-50 border border-red-200">
+          <p className="text-sm text-red-700">{error}</p>
+        </div>
+      )}
 
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm mb-6">
         <DataTable

@@ -2,12 +2,14 @@ export interface ReceiptLineAllocation {
   allocation_code: string
   expense_type: string | null
   amount: number
+  company_id?: string | null
 }
 
 export interface ReceiptLine {
   id: string
   gl_account_id: string
   amount: number
+  company_id?: string | null
   allocations?: ReceiptLineAllocation[]
 }
 
@@ -17,6 +19,7 @@ export interface Receipt {
   id: string
   voucher_number: string
   period_id: string
+  company_id?: string | null
   date: string
   voucher_amount: number
   mode_of_payment_id: string
@@ -39,7 +42,23 @@ export interface Receipt {
   posted_at: string | null
 }
 
-const STORAGE_KEY = 'receipts'
+const BASE_KEY = 'receipts'
+
+function scopedKey(): string {
+  const cid = localStorage.getItem('tolmai_company_id')
+  return cid ? `${BASE_KEY}_${cid}` : BASE_KEY
+}
+
+function migrateFromUnscoped(): boolean {
+  const oldKey = BASE_KEY
+  const raw = localStorage.getItem(oldKey)
+  if (!raw) return false
+  const key = scopedKey()
+  if (localStorage.getItem(key)) return true
+  localStorage.setItem(key, raw)
+  localStorage.removeItem(oldKey)
+  return true
+}
 
 export function generateReceiptNumber(sequence: number): string {
   const year = new Date().getFullYear()
@@ -47,8 +66,9 @@ export function generateReceiptNumber(sequence: number): string {
 }
 
 export function getReceipts(): Receipt[] {
+  migrateFromUnscoped()
   try {
-    const raw = localStorage.getItem(STORAGE_KEY)
+    const raw = localStorage.getItem(scopedKey())
     if (raw) return JSON.parse(raw)
   } catch {}
   return []
@@ -62,10 +82,10 @@ export function saveReceipt(receipt: Receipt) {
   } else {
     list.unshift(receipt)
   }
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(list))
+  localStorage.setItem(scopedKey(), JSON.stringify(list))
 }
 
 export function deleteReceiptById(id: string) {
   const list = getReceipts().filter((p) => p.id !== id)
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(list))
+  localStorage.setItem(scopedKey(), JSON.stringify(list))
 }

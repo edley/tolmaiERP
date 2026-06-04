@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react'
+import { useCompany } from '../../contexts/CompanyContext'
 import {
   Plus,
   XCircle,
@@ -39,6 +40,7 @@ const STATUS_LABELS: Record<JournalEntryStatus, string> = {
 }
 
 export function JournalEntries() {
+  const { currentCompany } = useCompany()
   const { entries, loading, submitEntry, approveEntry, postEntry, cancelEntry, deleteEntry, refetch } = useJournalEntries()
   const { userType, crud } = useRBAC()
   const { periods, currentPeriod, setCurrentPeriod } = usePeriod()
@@ -108,11 +110,11 @@ export function JournalEntries() {
         </div>
       )}
 
-      <Modal open={showForm} onClose={() => setShowForm(false)} title="New Journal Entry" size="full">
+      <Modal open={showForm} onClose={() => setShowForm(false)} title="New Journal Entry" size="full" companyName={currentCompany?.name}>
         <JournalEntryForm onClose={() => setShowForm(false)} onSuccess={refetch} />
       </Modal>
 
-      <Modal open={!!editingEntry} onClose={() => setEditingEntry(null)} title={`Edit — ${editingEntry?.entry_number ?? ''}`} size="full">
+      <Modal open={!!editingEntry} onClose={() => setEditingEntry(null)} title={`Edit — ${editingEntry?.entry_number ?? ''}`} size="full" companyName={currentCompany?.name}>
         {editingEntry && <JournalEntryForm entry={editingEntry} onClose={() => setEditingEntry(null)} onSuccess={refetch} />}
       </Modal>
 

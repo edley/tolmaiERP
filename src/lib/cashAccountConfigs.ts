@@ -4,21 +4,28 @@ export interface CashAccountConfig {
   payment_contra_account_id: string | null
 }
 
-const STORAGE_KEY = 'cash_account_configs'
+const BASE_KEY = 'cash_account_configs'
 
-let cachedConfigs: CashAccountConfig[] | null = null
+function scopedKey(): string {
+  const cid = localStorage.getItem('tolmai_company_id')
+  return cid ? `${BASE_KEY}_${cid}` : BASE_KEY
+}
+
+const caches = new Map<string, CashAccountConfig[] | null>()
 
 export function getCashAccountConfigs(): CashAccountConfig[] {
-  if (cachedConfigs) return cachedConfigs
+  const key = scopedKey()
+  if (caches.has(key)) return caches.get(key) ?? []
   try {
-    const stored = localStorage.getItem(STORAGE_KEY)
+    const stored = localStorage.getItem(key)
     if (stored) {
-      cachedConfigs = JSON.parse(stored)
-      return cachedConfigs!
+      const configs: CashAccountConfig[] = JSON.parse(stored)
+      caches.set(key, configs)
+      return configs
     }
   } catch { /* ignore */ }
-  cachedConfigs = []
-  return cachedConfigs!
+  caches.set(key, [])
+  return []
 }
 
 export function saveCashAccountConfig(
@@ -41,24 +48,21 @@ export function saveCashAccountConfig(
       configs[idx].payment_contra_account_id = contra_account_id
     }
   }
-  cachedConfigs = configs
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(configs))
+  const key = scopedKey()
+  caches.set(key, configs)
+  localStorage.setItem(key, JSON.stringify(configs))
 }
 
 export function migrateOldConfigs() {
-  const configs = getCashAccountConfigs()
-  let changed = false
-  for (const c of configs) {
-    const old = (c as unknown as Record<string, unknown>).contra_account_id as string | undefined
-    if (old !== undefined) {
-      if (!c.receipt_contra_account_id) c.receipt_contra_account_id = old
-      if (!c.payment_contra_account_id) c.payment_contra_account_id = old
-      delete (c as unknown as Record<string, unknown>).contra_account_id
-      changed = true
+  const oldKey = BASE_KEY
+  const raw = localStorage.getItem(oldKey)
+  if (!raw) return
+  try {
+    const oldConfigs: CashAccountConfig[] = JSON.parse(raw)
+    const key = scopedKey()
+    if (!localStorage.getItem(key)) {
+      localStorage.setItem(key, raw)
+      caches.set(key, oldConfigs)
     }
-  }
-  if (changed) {
-    cachedConfigs = configs
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(configs))
-  }
+  } catch { /* ignore */ }
 }

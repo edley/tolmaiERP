@@ -1,6 +1,7 @@
 import { Outlet } from 'react-router-dom'
 import { Sidebar } from './Sidebar'
 import { Header } from './Header'
+import { HelpButton } from '../ui/help-button'
 
 export function Layout() {
   return (
@@ -14,6 +15,7 @@ export function Layout() {
           <Outlet />
         </main>
       </div>
+      <HelpButton />
     </div>
   )
 }
