@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
-import { Upload, FileText, LogOut } from "lucide-react";
+import { Upload, FileText, Receipt, LogOut } from "lucide-react";
 import Link from "next/link";
 
 export default function Dashboard() {
@@ -32,7 +32,8 @@ export default function Dashboard() {
 
   const stats = [
     { label: "Upload Proof", icon: Upload, href: "/upload", color: "text-blue-600" },
-    { label: "View Proofs", icon: FileText, href: "/proofs", color: "text-green-600" },
+      { label: "View Proofs", icon: FileText, href: "/proofs", color: "text-green-600" },
+      { label: "View Receipts", icon: Receipt, href: "/receipts", color: "text-purple-600" },
   ];
 
   return (

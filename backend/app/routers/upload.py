@@ -3,6 +3,7 @@ import os
 from fastapi import APIRouter, UploadFile, File, HTTPException
 from app.supabase_client import supabase
 from app.config import settings
+from app.services.receipt_processor import process_proof
 from datetime import datetime
 
 router = APIRouter()
@@ -45,8 +46,19 @@ async def upload_proof(
         "created_at": datetime.utcnow().isoformat(),
     }).execute()
 
-    return {
-        "id": proof_id,
-        "file_name": file.filename or "proof.pdf",
-        "status": "pending",
-    }
+    try:
+        receipt_result = process_proof(proof_id)
+        return {
+            "id": proof_id,
+            "file_name": file.filename or "proof.pdf",
+            "status": "completed",
+            "receipt": receipt_result["extracted"],
+            "receipt_id": receipt_result["receipt_id"],
+        }
+    except Exception as e:
+        return {
+            "id": proof_id,
+            "file_name": file.filename or "proof.pdf",
+            "status": "uploaded_but_processing_failed",
+            "error": str(e),
+        }
