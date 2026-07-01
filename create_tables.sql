@@ -55,6 +55,8 @@ CREATE TABLE proof_of_payment_receipt (
     payer_name TEXT,
     payer_email TEXT,
     payment_date DATE,
+    bank_issuer TEXT,
+    description TEXT,
     notes TEXT,
     raw_text TEXT,
     status TEXT DEFAULT 'extracted' CHECK (status IN ('extracted', 'synced', 'failed')),
