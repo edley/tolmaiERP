@@ -4,6 +4,8 @@ import { getPayments, savePayment as persistPayment, deletePaymentById, generate
 import { usePaymentModes } from './usePaymentModes'
 import type { Payment, PaymentLine, PaymentStatus } from '../lib/payments'
 import { useAuth } from '../contexts/AuthContext'
+import { detectFieldChanges, saveFieldAuditEntries, persistFieldAuditToDb, setAuditCompanyId } from '../lib/fieldAuditLog'
+import type { FieldAuditEntry } from '../lib/fieldAuditLog'
 import { useCompany } from '../contexts/CompanyContext'
 import { useViewFilter } from '../contexts/ViewFilterContext'
 
@@ -59,6 +61,7 @@ export function usePayments() {
   const fetchPayments = useCallback(async () => {
     setLoading(true)
     const companyId = currentCompany?.id
+    if (companyId) setAuditCompanyId(companyId)
     let fromDb = false
     if (companyId && isOnline() && supabase) {
       let query = supabase
@@ -329,9 +332,29 @@ export function usePayments() {
       ...header,
       lines: lines.map((l) => ({ id: crypto.randomUUID(), ...l })),
     }
+
+    const changes = detectFieldChanges('payment', existing, updated)
+    if (changes.length > 0 && user && currentCompany?.id) {
+      const now2 = new Date().toISOString()
+      const auditEntries: FieldAuditEntry[] = changes.map((c) => ({
+        id: crypto.randomUUID(),
+        company_id: currentCompany.id,
+        record_type: 'payment',
+        record_id: id,
+        field_name: c.field_name,
+        old_value: c.old_value,
+        new_value: c.new_value,
+        changed_by: user.id ?? '',
+        changed_by_name: user.name ?? '',
+        changed_at: now2,
+      }))
+      saveFieldAuditEntries(auditEntries)
+      persistFieldAuditToDb(auditEntries)
+    }
+
     await syncAndRefresh(updated)
     return updated
-  }, [syncAndRefresh])
+  }, [syncAndRefresh, user, currentCompany?.id])
 
   const transitionStatus = useCallback(async (
     id: string,
@@ -348,9 +371,28 @@ export function usePayments() {
       [`${auditField}_by_name`]: user?.name ?? null,
       [`${auditField}_at`]: now,
     }
+
+    const changes = detectFieldChanges('payment', existing, updated)
+    if (changes.length > 0 && user && currentCompany?.id) {
+      const auditEntries: FieldAuditEntry[] = changes.map((c) => ({
+        id: crypto.randomUUID(),
+        company_id: currentCompany.id,
+        record_type: 'payment',
+        record_id: id,
+        field_name: c.field_name,
+        old_value: c.old_value,
+        new_value: c.new_value,
+        changed_by: user.id ?? '',
+        changed_by_name: user.name ?? '',
+        changed_at: now,
+      }))
+      saveFieldAuditEntries(auditEntries)
+      persistFieldAuditToDb(auditEntries)
+    }
+
     await syncAndRefresh(updated)
     return updated
-  }, [syncAndRefresh, user])
+  }, [syncAndRefresh, user, currentCompany?.id])
 
   const submitPayment = useCallback(async (id: string) => {
     const existing = (demoPayments ?? []).find((p) => p.id === id)
@@ -438,9 +480,29 @@ export function usePayments() {
     if (existing.status === 'posted') throw new Error('Posted payments cannot be cancelled')
     if (existing.status === 'cancelled') throw new Error('Payment is already cancelled')
     const updated: Payment = { ...existing, status: 'cancelled' }
+
+    const changes = detectFieldChanges('payment', existing, updated)
+    if (changes.length > 0 && user && currentCompany?.id) {
+      const t = new Date().toISOString()
+      const auditEntries: FieldAuditEntry[] = changes.map((c) => ({
+        id: crypto.randomUUID(),
+        company_id: currentCompany.id,
+        record_type: 'payment',
+        record_id: id,
+        field_name: c.field_name,
+        old_value: c.old_value,
+        new_value: c.new_value,
+        changed_by: user.id ?? '',
+        changed_by_name: user.name ?? '',
+        changed_at: t,
+      }))
+      saveFieldAuditEntries(auditEntries)
+      persistFieldAuditToDb(auditEntries)
+    }
+
     await syncAndRefresh(updated)
     return updated
-  }, [syncAndRefresh])
+  }, [syncAndRefresh, user, currentCompany?.id])
 
   const deletePayment = useCallback(async (id: string) => {
     const existing = (demoPayments ?? []).find((p) => p.id === id)

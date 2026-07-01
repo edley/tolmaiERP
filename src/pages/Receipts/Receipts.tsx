@@ -11,7 +11,9 @@ import { PageLayout } from '../../components/PageLayout'
 import { LookupField } from '../../components/LookupField'
 import { CashReceiptForm } from '../../components/CashReceiptForm'
 import { AuditTrail } from '../../components/AuditTrail'
+import { AuditFieldChanges } from '../../components/AuditFieldChanges'
 import { getPaymentModes } from '../../lib/paymentModes'
+import { getFieldAuditEntries } from '../../lib/fieldAuditLog'
 import type { Receipt } from '../../lib/receipts'
 
 const STATUS_COLORS: Record<string, string> = {
@@ -87,12 +89,18 @@ export function Receipts() {
           <div className="flex flex-col h-full gap-6">
             <CashReceiptForm receipt={viewingReceipt} onClose={() => setViewingReceipt(null)} onSuccess={refetch} />
             <AuditTrail data={viewingReceipt} />
+            <AuditFieldChanges entries={getFieldAuditEntries('receipt', viewingReceipt.id)} />
           </div>
         )}
       </Modal>
 
       <Modal open={!!auditReceipt} onClose={() => setAuditReceipt(null)} title={`Audit Trail — ${auditReceipt?.voucher_number ?? ''}`} size="md">
-        {auditReceipt && <AuditTrail data={auditReceipt} />}
+        {auditReceipt && (
+          <div className="flex flex-col gap-4">
+            <AuditTrail data={auditReceipt} />
+            <AuditFieldChanges entries={getFieldAuditEntries('receipt', auditReceipt.id)} />
+          </div>
+        )}
       </Modal>
 
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 mb-6">

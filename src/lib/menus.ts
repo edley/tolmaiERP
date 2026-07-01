@@ -23,6 +23,7 @@ export function isGroup(item: MenuItem): item is MenuGroup {
  *  permission system, and User Management. */
 export const ALL_MENUS: MenuItem[] = [
   { key: 'dashboard',   label: 'Home',        route: '/',                module: 'Overview' },
+  { key: 'budget',       label: 'Budget',     route: '/budget',           module: 'Reporting' },
   {
     key: 'transactions',
     label: 'Transactions',
@@ -43,6 +44,7 @@ export const ALL_MENUS: MenuItem[] = [
       { key: 'reports',      label: 'Financial Reports',   route: '/reports',                      module: 'Reporting' },
       { key: 'allocation-report-analysis', label: 'Allocation Report Analysis', route: '/allocation-report-analysis', module: 'Reporting' },
       { key: 'expense-type-analysis',    label: 'Expense Type Analysis',     route: '/expense-type-analysis',    module: 'Reporting' },
+      { key: 'budget-analysis',         label: 'Budget vs Actual',           route: '/budget-analysis',              module: 'Reporting' },
       { key: 'bank-report',              label: 'Bank Report',               route: '/bank-report',              module: 'Reporting' },
     ],
   },
@@ -81,8 +83,9 @@ export const ALL_MENUS: MenuItem[] = [
     module: 'Administration',
     children: [
       { key: 'usermgmt',     label: 'User Management',  route: '/usermgmt',     module: 'Administration' },
-      { key: 'audit-trail',  label: 'Audit Trail',      route: '/audit-trail',  module: 'Administration' },
-      { key: 'object-manager', label: 'Object Manager', route: '/object-manager', module: 'Administration' },
+      { key: 'audit-trail',       label: 'Audit Trail',        route: '/audit-trail',       module: 'Administration' },
+      { key: 'field-audit-log',   label: 'Field Audit Log',    route: '/field-audit-log',   module: 'Administration' },
+      { key: 'object-manager',    label: 'Object Manager',     route: '/object-manager',    module: 'Administration' },
     ],
   },
 ]

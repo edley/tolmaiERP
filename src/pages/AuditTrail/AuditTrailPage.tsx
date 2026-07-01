@@ -2,8 +2,11 @@ import { useState, useEffect, useMemo } from 'react'
 import { supabase, isOnline } from '../../lib/supabase'
 import { PageLayout } from '../../components/PageLayout'
 import { AuditTrail } from '../../components/AuditTrail'
+import { AuditFieldChanges } from '../../components/AuditFieldChanges'
 import { Modal } from '../../components/Modal'
 import { Clock, FileText, CreditCard, ArrowDownToLine, Search } from 'lucide-react'
+import { getFieldAuditEntries } from '../../lib/fieldAuditLog'
+import type { RecordType } from '../../lib/fieldAuditLog'
 
 interface AuditRecord {
   id: string
@@ -24,6 +27,12 @@ interface AuditRecord {
 
 const TYPE_OPTIONS = ['All', 'JE', 'PMT', 'RCT'] as const
 type TypeFilter = (typeof TYPE_OPTIONS)[number]
+
+const TYPE_RECORD_MAP: Record<string, RecordType> = {
+  JE: 'journal_entry',
+  PMT: 'payment',
+  RCT: 'receipt',
+}
 
 const TYPE_STYLES: Record<string, string> = {
   JE: 'bg-blue-50 text-blue-700',
@@ -227,7 +236,12 @@ export function AuditTrailPage() {
       )}
 
       <Modal open={!!selected} onClose={() => setSelected(null)} title={`Audit Trail — ${selected?.ref_number ?? ''}`} size="md">
-        {selected && <AuditTrail data={selected} />}
+        {selected && (
+          <div className="flex flex-col gap-4">
+            <AuditTrail data={selected} />
+            <AuditFieldChanges entries={getFieldAuditEntries(TYPE_RECORD_MAP[selected.type], selected.id)} />
+          </div>
+        )}
       </Modal>
     </PageLayout>
   )

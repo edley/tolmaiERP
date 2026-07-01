@@ -80,152 +80,164 @@ export function GeneralLedger() {
       }
     >
 
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 mb-6">
-        <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-          <div>
-            <label className="block text-xs font-medium text-slate-500 mb-1">Period</label>
-            <LookupField
-              value={currentPeriod?.id ?? ''}
-              onChange={handlePeriodChange}
-              options={periodOptions}
-              placeholder="Select period..."
-              searchPlaceholder="Search periods..."
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-slate-500 mb-1">Account</label>
-            <LookupField
-              value={selectedAccount}
-              onChange={setSelectedAccount}
-              options={[
-                { id: '', label: 'All Accounts' },
-                ...accounts.map((a) => ({ id: a.id, label: a.name, sublabel: a.code })),
-              ]}
-              placeholder="All Accounts"
-              searchPlaceholder="Search accounts..."
-              emptyMessage="No accounts found"
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-slate-500 mb-1">From Date</label>
-            <input
-              type="date"
-              value={startDate}
-              onChange={(e) => setStartDate(e.target.value)}
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-slate-500 mb-1">To Date</label>
-            <input
-              type="date"
-              value={endDate}
-              onChange={(e) => setEndDate(e.target.value)}
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
-            />
-          </div>
-          <div className="flex items-end">
-            <button
-              onClick={handleFilter}
-              className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white text-sm font-medium rounded-lg hover:bg-emerald-700 transition-colors"
-            >
-              <Search className="w-4 h-4" />
-              Filter
-            </button>
+      <div className="flex flex-col" style={{ height: 'calc(100vh - 200px)' }}>
+      <div className="shrink-0 space-y-3">
+        <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-3">
+          <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
+            <div>
+              <label className="block text-xs font-medium text-slate-500 mb-1">Period</label>
+              <LookupField
+                value={currentPeriod?.id ?? ''}
+                onChange={handlePeriodChange}
+                options={periodOptions}
+                placeholder="Select period..."
+                searchPlaceholder="Search periods..."
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-slate-500 mb-1">Account</label>
+              <LookupField
+                value={selectedAccount}
+                onChange={setSelectedAccount}
+                options={[
+                  { id: '', label: 'All Accounts' },
+                  ...accounts.map((a) => ({ id: a.id, label: a.name, sublabel: a.code })),
+                ]}
+                placeholder="All Accounts"
+                searchPlaceholder="Search accounts..."
+                emptyMessage="No accounts found"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-slate-500 mb-1">From Date</label>
+              <input
+                type="date"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-slate-500 mb-1">To Date</label>
+              <input
+                type="date"
+                value={endDate}
+                onChange={(e) => setEndDate(e.target.value)}
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+              />
+            </div>
+            <div className="flex items-end">
+              <button
+                onClick={handleFilter}
+                className="flex items-center gap-1.5 px-3 py-2 bg-emerald-600 text-white text-xs font-semibold rounded-lg hover:bg-emerald-700 transition-colors"
+              >
+                <Search className="w-3.5 h-3.5" />
+                Filter
+              </button>
+            </div>
           </div>
         </div>
+
+        <DemoBanner visible={isDemo} error={error} />
+        {error && !isDemo && (
+          <div className="rounded-lg px-4 py-3 bg-red-50 border border-red-200">
+            <p className="text-sm text-red-700">{error}</p>
+          </div>
+        )}
+
+        {(totalDebit > 0 || totalCredit > 0) && (
+          <div className="flex items-center gap-4 px-3 py-1.5 bg-white border border-slate-200 rounded-lg shadow-sm text-[11px]">
+            <span className="text-slate-500 font-medium uppercase tracking-wider">Totals</span>
+            <div className="h-3 w-px bg-slate-200" />
+            <span>
+              <span className="text-slate-500">Debit:</span>{' '}
+              <span className="font-mono font-semibold text-slate-800">
+                {totalDebit.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+              </span>
+            </span>
+            <div className="h-3 w-px bg-slate-200" />
+            <span>
+              <span className="text-slate-500">Credit:</span>{' '}
+              <span className="font-mono font-semibold text-slate-800">
+                {totalCredit.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+              </span>
+            </span>
+            <div className="h-3 w-px bg-slate-200" />
+            <span>
+              <span className="text-slate-500">Closing Balance:</span>{' '}
+              <span className="font-mono font-semibold text-slate-800">
+                {closingBalance.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+              </span>
+            </span>
+          </div>
+        )}
       </div>
 
-      <DemoBanner visible={isDemo} error={error} />
-      {error && !isDemo && (
-        <div className="rounded-lg px-4 py-3 mb-6 bg-red-50 border border-red-200">
-          <p className="text-sm text-red-700">{error}</p>
-        </div>
-      )}
-
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm mb-6">
-        <DataTable
-          columns={[
-            {
-              key: 'posting_date',
-              header: 'Date',
-              render: (row: LedgerEntry) => (
-                <span className="text-slate-500 text-xs">{new Date(row.posting_date).toLocaleDateString('en-GB')}</span>
-              ),
-            },
-            {
-              key: 'account',
-              header: 'Account',
-              render: (row: LedgerEntry) => {
-                const acc = row.account as unknown as { name: string; code: string; type: string } | undefined
-                return (
-                  <div>
-                    <span className="font-medium text-slate-900">{acc?.name ?? 'Unknown'}</span>
-                    {acc?.code && <span className="text-slate-400 text-xs ml-1">({acc.code})</span>}
-                  </div>
-                )
+      <div className="flex-1 min-h-0 overflow-y-auto mt-3">
+        <div className="bg-white rounded-xl border border-slate-200 shadow-sm">
+          <DataTable
+            columns={[
+              {
+                key: 'posting_date',
+                header: 'Date',
+                render: (row: LedgerEntry) => (
+                  <span className="text-slate-500 text-xs">{new Date(row.posting_date).toLocaleDateString('en-GB')}</span>
+                ),
               },
-            },
-            {
-              key: 'description',
-              header: 'Description',
-              render: (row: LedgerEntry) => (
-                <span className="text-slate-500">{row.description || '-'}</span>
-              ),
-            },
-            {
-              key: 'debit',
-              header: 'Debit',
-              render: (row: LedgerEntry) => (
-                <span className="font-mono text-sm">
-                  {row.debit > 0 ? Number(row.debit).toLocaleString('en-US', { minimumFractionDigits: 2 }) : ''}
-                </span>
-              ),
-            },
-            {
-              key: 'credit',
-              header: 'Credit',
-              render: (row: LedgerEntry) => (
-                <span className="font-mono text-sm">
-                  {row.credit > 0 ? Number(row.credit).toLocaleString('en-US', { minimumFractionDigits: 2 }) : ''}
-                </span>
-              ),
-            },
-            {
-              key: 'balance',
-              header: 'Balance',
-              render: (row: LedgerEntry) => (
-                <span className="font-mono text-sm font-medium">
-                  {Number(row.balance).toLocaleString('en-US', { minimumFractionDigits: 2 })}
-                </span>
-              ),
-            },
-          ]}
-          data={entries}
-          loading={loading}
-          emptyMessage="No ledger entries found for the selected filters."
-        />
+              {
+                key: 'account',
+                header: 'Account',
+                render: (row: LedgerEntry) => {
+                  const acc = row.account as unknown as { name: string; code: string; type: string } | undefined
+                  return (
+                    <div>
+                      <span className="font-medium text-slate-900">{acc?.name ?? 'Unknown'}</span>
+                      {acc?.code && <span className="text-slate-400 text-xs ml-1">({acc.code})</span>}
+                    </div>
+                  )
+                },
+              },
+              {
+                key: 'description',
+                header: 'Description',
+                render: (row: LedgerEntry) => (
+                  <span className="text-slate-500">{row.description || '-'}</span>
+                ),
+              },
+              {
+                key: 'debit',
+                header: 'Debit',
+                render: (row: LedgerEntry) => (
+                  <span className="font-mono text-sm">
+                    {row.debit > 0 ? Number(row.debit).toLocaleString('en-US', { minimumFractionDigits: 2 }) : ''}
+                  </span>
+                ),
+              },
+              {
+                key: 'credit',
+                header: 'Credit',
+                render: (row: LedgerEntry) => (
+                  <span className="font-mono text-sm">
+                    {row.credit > 0 ? Number(row.credit).toLocaleString('en-US', { minimumFractionDigits: 2 }) : ''}
+                  </span>
+                ),
+              },
+              {
+                key: 'balance',
+                header: 'Balance',
+                render: (row: LedgerEntry) => (
+                  <span className="font-mono text-sm font-medium">
+                    {Number(row.balance).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                  </span>
+                ),
+              },
+            ]}
+            data={entries}
+            loading={loading}
+            emptyMessage="No ledger entries found for the selected filters."
+          />
+        </div>
       </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
-          <p className="text-xs font-medium text-slate-500 uppercase">Total Debit</p>
-          <p className="text-lg font-bold text-slate-900 mt-1">
-            {totalDebit.toLocaleString('en-US', { minimumFractionDigits: 2 })}
-          </p>
-        </div>
-        <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
-          <p className="text-xs font-medium text-slate-500 uppercase">Total Credit</p>
-          <p className="text-lg font-bold text-slate-900 mt-1">
-            {totalCredit.toLocaleString('en-US', { minimumFractionDigits: 2 })}
-          </p>
-        </div>
-        <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
-          <p className="text-xs font-medium text-slate-500 uppercase">Closing Balance</p>
-          <p className="text-lg font-bold text-slate-900 mt-1">
-            {closingBalance.toLocaleString('en-US', { minimumFractionDigits: 2 })}
-          </p>
-        </div>
       </div>
     </PageLayout>
   )

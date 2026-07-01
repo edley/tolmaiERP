@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useEffect, useRef, useCallback, type ReactNode } from 'react'
-import { signInWithEmail, signUpWithEmail, signInWithGoogle, signInWithApple, signOut, getCurrentSession, updatePassword as updateAuthPassword, type AuthUser } from '../lib/auth'
+import { signInWithEmail, signUpWithEmail, signInWithGoogle, signInWithApple, signOut, getCurrentSession, updatePassword as updateAuthPassword, updateUserProfile, type AuthUser } from '../lib/auth'
 import { supabase } from '../lib/supabase'
 import { registerSession, heartbeatSession, removeSession } from '../lib/sessionTracker'
 
@@ -15,6 +15,7 @@ interface AuthContextType {
   isOnline: boolean
   updatePassword: (newPassword: string) => Promise<void>
   passwordResetRequired: boolean
+  updateProfile: (updates: Partial<AuthUser>) => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextType | null>(null)
@@ -52,34 +53,55 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     init()
   }, [isOnline])
 
-  const fetchProfile = async (userId: string): Promise<{ role: string; avatar_url: string | null; password_reset_required: boolean }> => {
+  const fetchProfile = async (userId: string): Promise<Partial<AuthUser>> => {
     try {
       const { data: profile, error: profileErr } = await supabase!
         .from('user_profiles')
-        .select('role, avatar_url, password_reset_required')
+        .select('*')
         .eq('id', userId)
         .single()
       if (!profileErr && profile) {
-        if (profile.role && ['Superuser', 'Manager', 'Team Leader', 'User'].includes(profile.role)) {
-          return { role: profile.role, avatar_url: profile.avatar_url ?? null, password_reset_required: !!profile.password_reset_required }
+        const role = profile.role && ['Superuser', 'Manager', 'Team Leader', 'User'].includes(profile.role)
+          ? profile.role : 'User'
+        return {
+          role,
+          name: profile.name ?? undefined,
+          avatar_url: profile.avatar_url ?? null,
+          password_reset_required: !!profile.password_reset_required,
+          phone: profile.phone ?? null,
+          date_of_birth: profile.date_of_birth ?? null,
+          address_line1: profile.address_line1 ?? null,
+          address_line2: profile.address_line2 ?? null,
+          city: profile.city ?? null,
+          state: profile.state ?? null,
+          postal_code: profile.postal_code ?? null,
+          country: profile.country ?? null,
         }
       }
     } catch {}
-    return { role: 'User', avatar_url: null, password_reset_required: false }
+    return { role: 'User', name: undefined, avatar_url: null, password_reset_required: false }
   }
 
   const login = async (email: string, password: string) => {
     const data = await signInWithEmail(email, password)
     const u = data.user
     if (u) {
-      const { role, avatar_url, password_reset_required } = await fetchProfile(u.id)
+      const profile = await fetchProfile(u.id)
       const resolved: AuthUser = {
         id: u.id,
         email: u.email ?? '',
-        name: u.user_metadata?.name ?? u.email ?? '',
-        avatar_url,
-        role,
-        password_reset_required,
+        name: profile.name ?? u.user_metadata?.name ?? u.email ?? '',
+        phone: profile.phone ?? null,
+        date_of_birth: profile.date_of_birth ?? null,
+        address_line1: profile.address_line1 ?? null,
+        address_line2: profile.address_line2 ?? null,
+        city: profile.city ?? null,
+        state: profile.state ?? null,
+        postal_code: profile.postal_code ?? null,
+        country: profile.country ?? null,
+        avatar_url: profile.avatar_url ?? null,
+        role: profile.role ?? 'User',
+        password_reset_required: profile.password_reset_required ?? false,
       }
       setUser(resolved)
       setSessionFlag()
@@ -91,14 +113,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const data = await signUpWithEmail(email, password, name)
     const u = data.user
     if (u) {
-      const { role, avatar_url, password_reset_required } = await fetchProfile(u.id)
+      const profile = await fetchProfile(u.id)
       const resolved: AuthUser = {
         id: u.id,
         email: u.email ?? '',
         name: name,
-        avatar_url,
-        role,
-        password_reset_required,
+        phone: profile.phone ?? null,
+        date_of_birth: profile.date_of_birth ?? null,
+        address_line1: profile.address_line1 ?? null,
+        address_line2: profile.address_line2 ?? null,
+        city: profile.city ?? null,
+        state: profile.state ?? null,
+        postal_code: profile.postal_code ?? null,
+        country: profile.country ?? null,
+        avatar_url: profile.avatar_url ?? null,
+        role: profile.role ?? 'User',
+        password_reset_required: profile.password_reset_required ?? false,
       }
       setUser(resolved)
       registerSession(resolved)
@@ -122,11 +152,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser((prev) => prev ? { ...prev, password_reset_required: false } : null)
   }
 
+  const handleUpdateProfile = useCallback(async (updates: Partial<AuthUser>) => {
+    if (!user) throw new Error('Not logged in')
+    await updateUserProfile(user.id, updates)
+    setUser((prev) => prev ? { ...prev, ...updates } : null)
+  }, [user])
+
   const loginAsDemo = useCallback(() => {
     const demoUser: AuthUser = {
       id: 'demo-user',
       email: 'demo@tolmai.app',
       name: 'Demo User',
+      phone: null,
+      date_of_birth: null,
+      address_line1: null,
+      address_line2: null,
+      city: null,
+      state: null,
+      postal_code: null,
+      country: null,
       avatar_url: null,
       role: 'Superuser',
       password_reset_required: false,
@@ -184,7 +228,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [user, resetIdleTimer])
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, signup, loginWithGoogle, loginWithApple, loginAsDemo, logout, isOnline, updatePassword: handleUpdatePassword, passwordResetRequired }}>
+    <AuthContext.Provider value={{ user, loading, login, signup, loginWithGoogle, loginWithApple, loginAsDemo, logout, isOnline, updatePassword: handleUpdatePassword, passwordResetRequired, updateProfile: handleUpdateProfile }}>
       {children}
     </AuthContext.Provider>
   )

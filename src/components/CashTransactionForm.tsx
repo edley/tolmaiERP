@@ -11,6 +11,8 @@ import { getMappings } from '../lib/allocationMappings'
 import { getTypesForGlCode } from '../lib/allocationTypes'
 
 import { usePeriod } from '../contexts/PeriodContext'
+import { useCompany } from '../contexts/CompanyContext'
+import { useBudgetCheck } from '../hooks/useBudgetCheck'
 import type { Payment } from '../lib/payments'
 
 interface LineAlloc {
@@ -41,6 +43,7 @@ const STATUS_BADGE: Record<string, { bg: string; text: string; border: string; d
 }
 
 export function CashTransactionForm({ onClose, onSuccess, payment }: CashTransactionFormProps) {
+  const { currentCompany } = useCompany()
   const { accounts } = useAccounts()
   const { payments, createPayment, updatePayment } = usePayments()
   const { periods, currentPeriod } = usePeriod()
@@ -65,6 +68,8 @@ export function CashTransactionForm({ onClose, onSuccess, payment }: CashTransac
   const [paidTo, setPaidTo] = useState(payment?.paid_to ?? '')
   const [invoiceNo, setInvoiceNo] = useState(payment?.invoice_no ?? '')
   const [description, setDescription] = useState(payment?.description ?? '')
+
+  const { getBudgetStatus, budgetLoading } = useBudgetCheck(currentCompany?.id, selectedPeriodId)
 
   const paymentModes = useMemo(() => getPaymentModes(), [])
 
@@ -472,15 +477,29 @@ export function CashTransactionForm({ onClose, onSuccess, payment }: CashTransac
                       ${parseFloat(line.amount || '0').toFixed(2)}
                     </div>
                   ) : (
-                    <div className="relative">
-                      <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-slate-400">$</span>
-                      <input
-                        type="number" step="0.01" min="0"
-                        value={line.amount}
-                        onChange={(e) => updateLine(line.id, 'amount', e.target.value)}
-                        className="w-full h-8 pl-5 pr-2.5 text-sm border border-[#dddbda] rounded text-[#16325c] font-mono text-right hover:border-[#0070d2] focus:border-[#0070d2] focus:ring-1 focus:ring-[#0070d2] focus:outline-none"
-                        placeholder="0.00"
-                      />
+                    <div>
+                      <div className="relative">
+                        <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-slate-400">$</span>
+                        <input
+                          type="number" step="0.01" min="0"
+                          value={line.amount}
+                          onChange={(e) => updateLine(line.id, 'amount', e.target.value)}
+                          className="w-full h-8 pl-5 pr-2.5 text-sm border border-[#dddbda] rounded text-[#16325c] font-mono text-right hover:border-[#0070d2] focus:border-[#0070d2] focus:ring-1 focus:ring-[#0070d2] focus:outline-none"
+                          placeholder="0.00"
+                        />
+                      </div>
+                      {line.gl_account_id && !budgetLoading && (() => {
+                        const status = getBudgetStatus(line.gl_account_id)
+                        if (status.budget === 0) return null
+                        const lineAmt = parseFloat(line.amount) || 0
+                        const remaining = status.remaining
+                        const exceeds = lineAmt > remaining
+                        return (
+                          <div className={`text-[9px] mt-0.5 text-right font-mono ${exceeds ? 'text-red-500' : remaining > status.budget * 0.25 ? 'text-emerald-600' : 'text-amber-600'}`}>
+                            {remaining < 0 ? 'Over by ' : ''}${Math.abs(remaining).toLocaleString('en-US', { minimumFractionDigits: 0 })} remaining
+                          </div>
+                        )
+                      })()}
                     </div>
                   )}
                 </div>

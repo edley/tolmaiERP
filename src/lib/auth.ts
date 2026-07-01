@@ -4,6 +4,14 @@ export interface AuthUser {
   id: string
   email: string
   name: string
+  phone: string | null
+  date_of_birth: string | null
+  address_line1: string | null
+  address_line2: string | null
+  city: string | null
+  state: string | null
+  postal_code: string | null
+  country: string | null
   avatar_url: string | null
   role: string
   password_reset_required: boolean
@@ -62,23 +70,33 @@ export async function getCurrentSession(): Promise<AuthUser | null> {
   let role = 'User'
   let avatarUrl: string | null = null
   let passwordResetRequired = false
+  let extra: Record<string, any> = {}
   try {
     const { data: profile, error: profileErr } = await supabase!
       .from('user_profiles')
-      .select('role, avatar_url, password_reset_required')
+      .select('*')
       .eq('id', user.id)
       .single()
     if (!profileErr && profile) {
       if (profile.role) role = profile.role
       if (profile.avatar_url) avatarUrl = profile.avatar_url
       if (profile.password_reset_required) passwordResetRequired = profile.password_reset_required
+      extra = profile
     }
   } catch {}
 
   return {
     id: user.id,
     email: user.email ?? '',
-    name: user.user_metadata?.name ?? user.email ?? 'Unknown',
+    name: extra.name ?? user.user_metadata?.name ?? user.email ?? 'Unknown',
+    phone: extra.phone ?? null,
+    date_of_birth: extra.date_of_birth ?? null,
+    address_line1: extra.address_line1 ?? null,
+    address_line2: extra.address_line2 ?? null,
+    city: extra.city ?? null,
+    state: extra.state ?? null,
+    postal_code: extra.postal_code ?? null,
+    country: extra.country ?? null,
     avatar_url: avatarUrl ?? user.user_metadata?.avatar_url ?? null,
     role,
     password_reset_required: passwordResetRequired,
@@ -112,7 +130,7 @@ export async function fetchUserProfiles(): Promise<UserProfile[]> {
   return (data ?? []) as UserProfile[]
 }
 
-export async function updateUserProfile(userId: string, updates: { role?: string; name?: string }): Promise<void> {
+export async function updateUserProfile(userId: string, updates: Record<string, any>): Promise<void> {
   if (!isOnline()) throw new Error('Database not configured.')
   const { error } = await supabase!
     .from('user_profiles')

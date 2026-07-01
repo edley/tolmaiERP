@@ -6,6 +6,8 @@ import { useAuth } from '../contexts/AuthContext'
 import { useCompany } from '../contexts/CompanyContext'
 import { useViewFilter } from '../contexts/ViewFilterContext'
 import type { JournalEntry, JournalEntryItem, JournalEntryStatus } from '../types'
+import { detectFieldChanges, saveFieldAuditEntries, persistFieldAuditToDb, setAuditCompanyId } from '../lib/fieldAuditLog'
+import type { FieldAuditEntry } from '../lib/fieldAuditLog'
 
 function daysAgo(days: number): string {
   const d = new Date()
@@ -58,6 +60,7 @@ export function useJournalEntries() {
   const fetchEntries = useCallback(async () => {
     setLoading(true)
     const companyId = currentCompany?.id
+    if (companyId) setAuditCompanyId(companyId)
     const online = companyId && isOnline() && supabase
     let fromDb = false
 
@@ -352,9 +355,29 @@ export function useJournalEntries() {
       ...item,
     }))
     updated.items = updatedItems
+
+    const changes = detectFieldChanges('journal_entry', existing, updated)
+    if (changes.length > 0 && user && currentCompany?.id) {
+      const now2 = new Date().toISOString()
+      const auditEntries: FieldAuditEntry[] = changes.map((c) => ({
+        id: crypto.randomUUID(),
+        company_id: currentCompany.id,
+        record_type: 'journal_entry',
+        record_id: id,
+        field_name: c.field_name,
+        old_value: c.old_value,
+        new_value: c.new_value,
+        changed_by: user.id ?? '',
+        changed_by_name: user.name ?? '',
+        changed_at: now2,
+      }))
+      saveFieldAuditEntries(auditEntries)
+      persistFieldAuditToDb(auditEntries)
+    }
+
     await syncAndRefresh(updated, updatedItems)
     return updated
-  }, [syncAndRefresh])
+  }, [syncAndRefresh, user, currentCompany?.id])
 
   const transitionStatus = useCallback(async (
     id: string,
@@ -372,9 +395,28 @@ export function useJournalEntries() {
       [`${auditField}_by_name`]: user?.name ?? null,
       [`${auditField}_at`]: now,
     }
+
+    const changes = detectFieldChanges('journal_entry', existing, updated)
+    if (changes.length > 0 && user && currentCompany?.id) {
+      const auditEntries: FieldAuditEntry[] = changes.map((c) => ({
+        id: crypto.randomUUID(),
+        company_id: currentCompany.id,
+        record_type: 'journal_entry',
+        record_id: id,
+        field_name: c.field_name,
+        old_value: c.old_value,
+        new_value: c.new_value,
+        changed_by: user.id ?? '',
+        changed_by_name: user.name ?? '',
+        changed_at: now,
+      }))
+      saveFieldAuditEntries(auditEntries)
+      persistFieldAuditToDb(auditEntries)
+    }
+
     await syncAndRefresh(updated, existing.items)
     return updated
-  }, [syncAndRefresh, user])
+  }, [syncAndRefresh, user, currentCompany?.id])
 
   const submitEntry = useCallback(async (id: string) => {
     const existing = (demoEntries ?? []).find((e) => e.id === id)
@@ -441,9 +483,28 @@ export function useJournalEntries() {
     if (existing.status === 'cancelled') throw new Error('Entry is already cancelled')
     const now = new Date().toISOString()
     const updated: JournalEntry = { ...existing, status: 'cancelled', updated_at: now }
+
+    const changes = detectFieldChanges('journal_entry', existing, updated)
+    if (changes.length > 0 && user && currentCompany?.id) {
+      const auditEntries: FieldAuditEntry[] = changes.map((c) => ({
+        id: crypto.randomUUID(),
+        company_id: currentCompany.id,
+        record_type: 'journal_entry',
+        record_id: id,
+        field_name: c.field_name,
+        old_value: c.old_value,
+        new_value: c.new_value,
+        changed_by: user.id ?? '',
+        changed_by_name: user.name ?? '',
+        changed_at: now,
+      }))
+      saveFieldAuditEntries(auditEntries)
+      persistFieldAuditToDb(auditEntries)
+    }
+
     await syncAndRefresh(updated, existing.items)
     return updated
-  }, [syncAndRefresh])
+  }, [syncAndRefresh, user, currentCompany?.id])
 
   const deleteEntry = useCallback(async (id: string) => {
     const existing = (demoEntries ?? []).find((e) => e.id === id)

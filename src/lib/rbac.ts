@@ -5,9 +5,9 @@ export const USER_TYPES: UserType[] = ['Superuser', 'Manager', 'Team Leader', 'U
 /** Default allowed menu keys per user type. '*' = all menus. */
 export const DEFAULT_PERMISSIONS: Record<UserType, string[]> = {
   Superuser: ['*'],
-  Manager: ['accountant', 'journal', 'ledger', 'payments', 'receipts', 'trialbalance', 'reports', 'settings', 'allocationmappings', 'allocationtypes', 'accountingperiods', 'pending-posting', 'user-sessions', 'usermgmt', 'paymentmodes'],
-  'Team Leader': ['dashboard', 'accountant', 'journal', 'ledger', 'payments', 'receipts', 'trialbalance', 'reports', 'settings', 'allocationmappings', 'allocationtypes', 'accountingperiods', 'pending-posting', 'user-sessions', 'paymentmodes'],
-  User: ['dashboard', 'accountant', 'ledger', 'payments', 'receipts', 'trialbalance', 'settings', 'allocationmappings', 'allocationtypes', 'accountingperiods', 'user-sessions', 'paymentmodes'],
+  Manager: ['accountant', 'journal', 'ledger', 'payments', 'receipts', 'trialbalance', 'reports', 'budget', 'settings', 'allocationmappings', 'allocationtypes', 'accountingperiods', 'pending-posting', 'user-sessions', 'usermgmt', 'paymentmodes'],
+  'Team Leader': ['dashboard', 'accountant', 'journal', 'ledger', 'payments', 'receipts', 'trialbalance', 'reports', 'budget', 'settings', 'allocationmappings', 'allocationtypes', 'accountingperiods', 'pending-posting', 'user-sessions', 'paymentmodes'],
+  User: ['dashboard', 'accountant', 'ledger', 'payments', 'receipts', 'trialbalance', 'reports', 'budget', 'settings', 'allocationmappings', 'allocationtypes', 'accountingperiods', 'user-sessions', 'paymentmodes'],
 }
 
 let currentPermissions: Record<UserType, string[]> | null = null

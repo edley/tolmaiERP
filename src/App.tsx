@@ -18,6 +18,7 @@ import { Settings } from './pages/Settings'
 import { UserManagement } from './pages/UserManagement'
 import { UserSession } from './pages/UserSession'
 import { AuditTrailPage } from './pages/AuditTrail'
+import { FieldAuditLogPage } from './pages/FieldAuditLog'
 import { ObjectManager } from './pages/ObjectManager'
 import { PaymentModes } from './pages/PaymentModes'
 import { MFAGate } from './components/MFA/MFAGate'
@@ -30,6 +31,8 @@ import { ExpenseTypeAnalysis } from './pages/ExpenseTypeAnalysis'
 import { PendingPosting } from './pages/PendingPosting'
 import { Companies } from './pages/Companies'
 import { BankReport } from './pages/BankReport'
+import { BudgetPage } from './pages/Budget'
+import { BudgetAnalysis } from './pages/BudgetAnalysis'
 
 function App() {
   return (
@@ -60,9 +63,12 @@ function App() {
             <Route path="/usermgmt" element={<UserManagement />} />
             <Route path="/user-sessions" element={<UserSession />} />
             <Route path="/audit-trail" element={<AuditTrailPage />} />
+            <Route path="/field-audit-log" element={<FieldAuditLogPage />} />
             <Route path="/object-manager" element={<ObjectManager />} />
             <Route path="/companies" element={<Companies />} />
             <Route path="/bank-report" element={<BankReport />} />
+            <Route path="/budget" element={<BudgetPage />} />
+            <Route path="/budget-analysis" element={<BudgetAnalysis />} />
             </Route>
           </Route>
         </Route>

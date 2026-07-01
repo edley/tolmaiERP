@@ -1,10 +1,10 @@
 import type { UserType } from './rbac'
 
-export type DocType = 'journal_entry' | 'account' | 'ledger_entry' | 'company' | 'transaction_type' | 'accounting_period' | 'payment' | 'receipt' | 'trial_balance' | 'allocation_mapping' | 'allocation_type' | 'bank_report' | 'payment_mode'
+export type DocType = 'journal_entry' | 'account' | 'ledger_entry' | 'company' | 'transaction_type' | 'accounting_period' | 'payment' | 'receipt' | 'trial_balance' | 'allocation_mapping' | 'allocation_type' | 'bank_report' | 'payment_mode' | 'budget'
 
 export type CrudOp = 'create' | 'read' | 'update' | 'delete'
 
-export const DOC_TYPES: DocType[] = ['journal_entry', 'account', 'ledger_entry', 'company', 'transaction_type', 'accounting_period', 'payment', 'receipt', 'trial_balance', 'allocation_mapping', 'allocation_type', 'bank_report', 'payment_mode']
+export const DOC_TYPES: DocType[] = ['journal_entry', 'account', 'ledger_entry', 'company', 'transaction_type', 'accounting_period', 'payment', 'receipt', 'trial_balance', 'allocation_mapping', 'allocation_type', 'bank_report', 'payment_mode', 'budget']
 
 export const DOC_TYPE_LABELS: Record<DocType, string> = {
   journal_entry: 'Journal Entry',
@@ -20,6 +20,7 @@ export const DOC_TYPE_LABELS: Record<DocType, string> = {
   allocation_type: 'Allocation Type',
   bank_report: 'Bank Report',
   payment_mode: 'Payment Mode',
+  budget: 'Budget',
 }
 
 export const DEFAULT_CRUD: Record<UserType, Record<DocType, Record<CrudOp, boolean>>> = {
@@ -37,6 +38,7 @@ export const DEFAULT_CRUD: Record<UserType, Record<DocType, Record<CrudOp, boole
     allocation_type: { create: true, read: true, update: true, delete: true },
     bank_report: { create: false, read: true, update: false, delete: false },
     payment_mode: { create: true, read: true, update: true, delete: true },
+    budget: { create: true, read: true, update: true, delete: true },
   }),
   Manager: initCrudFull({
     journal_entry: { create: true, read: true, update: true, delete: false },
@@ -52,6 +54,7 @@ export const DEFAULT_CRUD: Record<UserType, Record<DocType, Record<CrudOp, boole
     allocation_type: { create: true, read: true, update: true, delete: false },
     bank_report: { create: false, read: true, update: false, delete: false },
     payment_mode: { create: true, read: true, update: true, delete: false },
+    budget: { create: true, read: true, update: true, delete: false },
   }),
   'Team Leader': initCrudFull({
     journal_entry: { create: true, read: true, update: true, delete: false },
@@ -67,6 +70,7 @@ export const DEFAULT_CRUD: Record<UserType, Record<DocType, Record<CrudOp, boole
     allocation_type: { create: true, read: true, update: true, delete: false },
     bank_report: { create: false, read: true, update: false, delete: false },
     payment_mode: { create: true, read: true, update: true, delete: false },
+    budget: { create: true, read: true, update: true, delete: false },
   }),
   User: initCrudFull({
     journal_entry: { create: true, read: true, update: false, delete: false },
@@ -82,6 +86,7 @@ export const DEFAULT_CRUD: Record<UserType, Record<DocType, Record<CrudOp, boole
     allocation_type: { create: true, read: true, update: false, delete: false },
     bank_report: { create: false, read: true, update: false, delete: false },
     payment_mode: { create: true, read: true, update: false, delete: false },
+    budget: { create: false, read: true, update: false, delete: false },
   }),
 }
 

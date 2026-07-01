@@ -153,3 +153,41 @@ export interface TrialBalanceRow {
   credit: number
   balance: number
 }
+
+export interface BudgetGlAccount {
+  id: string
+  company_id: string
+  period_id: string
+  gl_account_id: string
+  gl_code: string | null
+  amount: number
+  created_at: string
+  updated_at: string
+  gl_account?: Account
+}
+
+export interface BudgetAllocationCode {
+  id: string
+  company_id: string
+  period_id: string
+  gl_account_id: string
+  allocation_code: string
+  allocation_type: string
+  amount: number
+  description: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface BudgetExpenseType {
+  id: string
+  company_id: string
+  period_id: string
+  expense_type_id: string
+  amount: number
+  created_at: string
+  updated_at: string
+  expense_type?: { id: string; name: string; gl_account_id: string; gl_account?: Account }
+}
+
+export type BudgetTab = 'gl_accounts' | 'allocation_codes' | 'expense_types'

@@ -17,6 +17,7 @@ import {
   Check,
   ChevronRight,
   Database,
+  DollarSign,
 } from 'lucide-react'
 import { Logo } from '../ui/logo'
 import { useRBAC } from '../../hooks/useRBAC'
@@ -39,6 +40,8 @@ const ICON_MAP: Record<string, typeof LayoutDashboard> = {
   payments: CreditCard,
   receipts: ArrowDownToLine,
   reports: BarChart3,
+  budget: DollarSign,
+  'budget-analysis': DollarSign,
   settings: Settings,
   accountingperiods: Calendar,
   allocationmappings: Settings,

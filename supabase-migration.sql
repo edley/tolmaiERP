@@ -926,3 +926,145 @@ CREATE POLICY "Anyone can view avatars" ON storage.objects
 -- 27. Force password reset on first login
 -- ============================================================
 ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS password_reset_required BOOLEAN NOT NULL DEFAULT false;
+
+-- ============================================================
+-- 29. Profile personal details
+-- ============================================================
+ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS phone TEXT;
+ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS date_of_birth DATE;
+ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS address_line1 TEXT;
+ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS address_line2 TEXT;
+ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS city TEXT;
+ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS state TEXT;
+ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS postal_code TEXT;
+ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS country TEXT;
+
+-- ============================================================
+-- 28. Field-Level Audit Log (tracks individual field changes)
+-- ============================================================
+CREATE TABLE IF NOT EXISTS field_audit_log (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  company_id UUID NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+  record_type TEXT NOT NULL CHECK (record_type IN ('journal_entry', 'payment', 'receipt')),
+  record_id UUID NOT NULL,
+  field_name TEXT NOT NULL,
+  old_value TEXT,
+  new_value TEXT,
+  changed_by TEXT NOT NULL,
+  changed_by_name TEXT NOT NULL,
+  changed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+ALTER TABLE field_audit_log ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Enable all access on field_audit_log" ON field_audit_log;
+CREATE POLICY "Enable all access on field_audit_log"
+  ON field_audit_log FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+
+CREATE INDEX IF NOT EXISTS idx_field_audit_log_record ON field_audit_log(record_type, record_id);
+CREATE INDEX IF NOT EXISTS idx_field_audit_log_company ON field_audit_log(company_id);
+CREATE INDEX IF NOT EXISTS idx_field_audit_log_changed_at ON field_audit_log(changed_at);
+
+-- ============================================================
+-- 30. Budget tables (period-based budgets)
+-- ============================================================
+CREATE TABLE IF NOT EXISTS budget_gl_accounts (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  company_id UUID NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+  period_id UUID NOT NULL REFERENCES accounting_periods(id),
+  gl_account_id UUID NOT NULL REFERENCES accounts(id),
+  amount NUMERIC(16,2) NOT NULL DEFAULT 0,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE (company_id, period_id, gl_account_id)
+);
+
+CREATE TABLE IF NOT EXISTS budget_allocation_codes (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  company_id UUID NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+  period_id UUID NOT NULL REFERENCES accounting_periods(id),
+  gl_account_id UUID NOT NULL REFERENCES accounts(id),
+  allocation_code TEXT NOT NULL,
+  allocation_type TEXT NOT NULL DEFAULT '',
+  amount NUMERIC(16,2) NOT NULL DEFAULT 0,
+  description TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE (company_id, period_id, gl_account_id, allocation_code, allocation_type)
+);
+
+CREATE TABLE IF NOT EXISTS budget_expense_types (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  company_id UUID NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+  period_id UUID NOT NULL REFERENCES accounting_periods(id),
+  expense_type_id UUID NOT NULL REFERENCES expense_types(id),
+  amount NUMERIC(16,2) NOT NULL DEFAULT 0,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE (company_id, period_id, expense_type_id)
+);
+
+ALTER TABLE budget_gl_accounts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE budget_allocation_codes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE budget_expense_types ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Enable all access on budget_gl_accounts" ON budget_gl_accounts;
+CREATE POLICY "Enable all access on budget_gl_accounts"
+  ON budget_gl_accounts FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+DROP POLICY IF EXISTS "Enable all access on budget_allocation_codes" ON budget_allocation_codes;
+CREATE POLICY "Enable all access on budget_allocation_codes"
+  ON budget_allocation_codes FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+DROP POLICY IF EXISTS "Enable all access on budget_expense_types" ON budget_expense_types;
+CREATE POLICY "Enable all access on budget_expense_types"
+  ON budget_expense_types FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+
+CREATE INDEX IF NOT EXISTS idx_budget_gl_accounts_company ON budget_gl_accounts(company_id);
+CREATE INDEX IF NOT EXISTS idx_budget_gl_accounts_period ON budget_gl_accounts(period_id);
+CREATE INDEX IF NOT EXISTS idx_budget_allocation_codes_company ON budget_allocation_codes(company_id);
+CREATE INDEX IF NOT EXISTS idx_budget_allocation_codes_period ON budget_allocation_codes(period_id);
+CREATE INDEX IF NOT EXISTS idx_budget_expense_types_company ON budget_expense_types(company_id);
+CREATE INDEX IF NOT EXISTS idx_budget_expense_types_period ON budget_expense_types(period_id);
+
+DROP TRIGGER IF EXISTS update_budget_gl_accounts_updated_at ON budget_gl_accounts;
+CREATE TRIGGER update_budget_gl_accounts_updated_at
+  BEFORE UPDATE ON budget_gl_accounts
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+DROP TRIGGER IF EXISTS update_budget_allocation_codes_updated_at ON budget_allocation_codes;
+CREATE TRIGGER update_budget_allocation_codes_updated_at
+  BEFORE UPDATE ON budget_allocation_codes
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+DROP TRIGGER IF EXISTS update_budget_expense_types_updated_at ON budget_expense_types;
+CREATE TRIGGER update_budget_expense_types_updated_at
+  BEFORE UPDATE ON budget_expense_types
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+
+-- Add gl_code column to budget_gl_accounts if not present
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'budget_gl_accounts' AND column_name = 'gl_code'
+  ) THEN
+    ALTER TABLE budget_gl_accounts ADD COLUMN gl_code TEXT;
+  END IF;
+END $$;
+
+-- Add gl_account_id and allocation_type columns if not present, rebuild unique constraint
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'budget_allocation_codes' AND column_name = 'gl_account_id'
+  ) THEN
+    ALTER TABLE budget_allocation_codes ADD COLUMN gl_account_id UUID;
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'budget_allocation_codes' AND column_name = 'allocation_type'
+  ) THEN
+    ALTER TABLE budget_allocation_codes ADD COLUMN allocation_type TEXT NOT NULL DEFAULT '';
+  END IF;
+END $$;
+
+-- Rebuild unique constraint to include all columns
+ALTER TABLE budget_allocation_codes DROP CONSTRAINT IF EXISTS budget_allocation_codes_company_id_period_id_allocation_code_key;
+ALTER TABLE budget_allocation_codes DROP CONSTRAINT IF EXISTS budget_allocation_codes_company_id_period_id_gl_account_id_allocation_code_key;
+ALTER TABLE budget_allocation_codes ADD UNIQUE (company_id, period_id, gl_account_id, allocation_code, allocation_type);

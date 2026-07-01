@@ -17,7 +17,9 @@ import { PageLayout } from '../../components/PageLayout'
 import { LookupField } from '../../components/LookupField'
 import { JournalEntryForm } from '../../components/JournalEntryForm'
 import { AuditTrail } from '../../components/AuditTrail'
+import { AuditFieldChanges } from '../../components/AuditFieldChanges'
 import { useJournalEntries } from '../../hooks/useJournalEntries'
+import { getFieldAuditEntries } from '../../lib/fieldAuditLog'
 import { useRBAC } from '../../hooks/useRBAC'
 import { usePeriod } from '../../contexts/PeriodContext'
 import { DataTable } from '../../components/DataTable'
@@ -123,7 +125,12 @@ export function JournalEntries() {
       </Modal>
 
       <Modal open={!!auditEntry} onClose={() => setAuditEntry(null)} title={`Audit Trail — ${auditEntry?.entry_number ?? ''}`} size="md">
-        {auditEntry && <AuditTrail data={auditEntry} />}
+        {auditEntry && (
+          <div className="flex flex-col gap-4">
+            <AuditTrail data={auditEntry} />
+            <AuditFieldChanges entries={getFieldAuditEntries('journal_entry', auditEntry.id)} />
+          </div>
+        )}
       </Modal>
 
       <DemoBanner visible={false} error={null} />

@@ -557,3 +557,109 @@ CREATE POLICY "Enable select for authenticated on waitlist_signups"
 
 CREATE INDEX IF NOT EXISTS idx_waitlist_signups_email ON waitlist_signups(email);
 CREATE INDEX IF NOT EXISTS idx_waitlist_signups_created ON waitlist_signups(created_at);
+
+-- ============================================================
+-- 17. Field-Level Audit Log (tracks individual field changes)
+-- ============================================================
+CREATE TABLE IF NOT EXISTS field_audit_log (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  company_id UUID NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+  record_type TEXT NOT NULL CHECK (record_type IN ('journal_entry', 'payment', 'receipt')),
+  record_id UUID NOT NULL,
+  field_name TEXT NOT NULL,
+  old_value TEXT,
+  new_value TEXT,
+  changed_by TEXT NOT NULL,
+  changed_by_name TEXT NOT NULL,
+  changed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+ALTER TABLE field_audit_log ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Enable all access on field_audit_log"
+  ON field_audit_log FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+
+CREATE INDEX IF NOT EXISTS idx_field_audit_log_record ON field_audit_log(record_type, record_id);
+CREATE INDEX IF NOT EXISTS idx_field_audit_log_company ON field_audit_log(company_id);
+CREATE INDEX IF NOT EXISTS idx_field_audit_log_changed_at ON field_audit_log(changed_at);
+
+-- ============================================================
+-- 18. Profile personal details
+-- ============================================================
+ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS phone TEXT;
+ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS date_of_birth DATE;
+ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS address_line1 TEXT;
+ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS address_line2 TEXT;
+ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS city TEXT;
+ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS state TEXT;
+ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS postal_code TEXT;
+ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS country TEXT;
+
+-- ============================================================
+-- 19. Budget tables (period-based budgets)
+-- ============================================================
+CREATE TABLE IF NOT EXISTS budget_gl_accounts (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  company_id UUID NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+  period_id UUID NOT NULL REFERENCES accounting_periods(id),
+  gl_account_id UUID NOT NULL REFERENCES accounts(id),
+  gl_code TEXT,
+  amount NUMERIC(16,2) NOT NULL DEFAULT 0,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE (company_id, period_id, gl_account_id)
+);
+
+CREATE TABLE IF NOT EXISTS budget_allocation_codes (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  company_id UUID NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+  period_id UUID NOT NULL REFERENCES accounting_periods(id),
+  gl_account_id UUID NOT NULL REFERENCES accounts(id),
+  allocation_code TEXT NOT NULL,
+  allocation_type TEXT NOT NULL DEFAULT '',
+  amount NUMERIC(16,2) NOT NULL DEFAULT 0,
+  description TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE (company_id, period_id, gl_account_id, allocation_code, allocation_type)
+);
+
+CREATE TABLE IF NOT EXISTS budget_expense_types (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  company_id UUID NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+  period_id UUID NOT NULL REFERENCES accounting_periods(id),
+  expense_type_id UUID NOT NULL REFERENCES expense_types(id),
+  amount NUMERIC(16,2) NOT NULL DEFAULT 0,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE (company_id, period_id, expense_type_id)
+);
+
+ALTER TABLE budget_gl_accounts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE budget_allocation_codes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE budget_expense_types ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Enable all access on budget_gl_accounts"
+  ON budget_gl_accounts FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "Enable all access on budget_allocation_codes"
+  ON budget_allocation_codes FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "Enable all access on budget_expense_types"
+  ON budget_expense_types FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+
+CREATE INDEX IF NOT EXISTS idx_budget_gl_accounts_company ON budget_gl_accounts(company_id);
+CREATE INDEX IF NOT EXISTS idx_budget_gl_accounts_period ON budget_gl_accounts(period_id);
+CREATE INDEX IF NOT EXISTS idx_budget_allocation_codes_company ON budget_allocation_codes(company_id);
+CREATE INDEX IF NOT EXISTS idx_budget_allocation_codes_period ON budget_allocation_codes(period_id);
+CREATE INDEX IF NOT EXISTS idx_budget_expense_types_company ON budget_expense_types(company_id);
+CREATE INDEX IF NOT EXISTS idx_budget_expense_types_period ON budget_expense_types(period_id);
+
+-- Auto-update updated_at for budget tables
+CREATE TRIGGER update_budget_gl_accounts_updated_at
+  BEFORE UPDATE ON budget_gl_accounts
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+CREATE TRIGGER update_budget_allocation_codes_updated_at
+  BEFORE UPDATE ON budget_allocation_codes
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+CREATE TRIGGER update_budget_expense_types_updated_at
+  BEFORE UPDATE ON budget_expense_types
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at();
