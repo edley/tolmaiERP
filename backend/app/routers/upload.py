@@ -3,7 +3,7 @@ import os
 from fastapi import APIRouter, UploadFile, File, Depends, HTTPException
 from sqlalchemy.orm import Session
 from app.database import get_db
-from app.models import PaymentProof, ProofStatus
+from app.models import PaymentProof
 from app.supabase_client import supabase
 from app.config import settings
 
@@ -19,7 +19,7 @@ async def upload_proof(
     tenant_id: str = "default",
     db: Session = Depends(get_db),
 ):
-    if file.content_type not in ALLOWED_MIMES:
+    if file.content_type and file.content_type not in ALLOWED_MIMES:
         raise HTTPException(status_code=400, detail="Only PDF files allowed")
     content = await file.read()
     if len(content) > MAX_FILE_SIZE:
@@ -41,10 +41,10 @@ async def upload_proof(
         file_size=len(content),
         mime_type=file.content_type,
         source="web_upload",
-        status=ProofStatus.pending,
+        status="pending",
     )
     db.add(proof)
     db.commit()
     db.refresh(proof)
 
-    return {"id": str(proof.id), "file_name": proof.file_name, "status": proof.status.value}
+    return {"id": str(proof.id), "file_name": proof.file_name, "status": proof.status}

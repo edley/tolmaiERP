@@ -3,7 +3,7 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 export async function uploadProof(
   file: File,
   tenantId: string,
-  token: string,
+  _token: string,
 ): Promise<{ id: string; file_name: string; status: string }> {
   const form = new FormData();
   form.append("file", file);
@@ -11,12 +11,11 @@ export async function uploadProof(
 
   const res = await fetch(`${API_URL}/api/upload`, {
     method: "POST",
-    headers: { Authorization: `Bearer ${token}` },
     body: form,
   });
 
   if (!res.ok) {
-    const err = await res.json();
+    const err = await res.json().catch(() => ({ detail: "Upload failed" }));
     throw new Error(err.detail || "Upload failed");
   }
   return res.json();
@@ -24,32 +23,27 @@ export async function uploadProof(
 
 export async function fetchProofs(
   tenantId: string,
-  token: string,
+  _token: string,
   status?: string,
   page = 1,
 ) {
   const params = new URLSearchParams({ tenant_id: tenantId, page: String(page) });
   if (status) params.set("status", status);
 
-  const res = await fetch(`${API_URL}/api/proofs?${params}`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
+  const res = await fetch(`${API_URL}/api/proofs?${params}`);
   if (!res.ok) throw new Error("Failed to fetch proofs");
   return res.json();
 }
 
-export async function fetchProof(proofId: string, token: string) {
-  const res = await fetch(`${API_URL}/api/proofs/${proofId}`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
+export async function fetchProof(proofId: string, _token: string) {
+  const res = await fetch(`${API_URL}/api/proofs/${proofId}`);
   if (!res.ok) throw new Error("Failed to fetch proof");
   return res.json();
 }
 
-export async function syncProofToErp(proofId: string, token: string) {
+export async function syncProofToErp(proofId: string, _token: string) {
   const res = await fetch(`${API_URL}/api/proofs/${proofId}/sync`, {
     method: "POST",
-    headers: { Authorization: `Bearer ${token}` },
   });
   if (!res.ok) throw new Error("Sync failed");
   return res.json();

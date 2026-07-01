@@ -1,9 +1,9 @@
 import uuid
 from sqlalchemy.orm import Session
 from app.database import SessionLocal, get_erp_db
-from app.models import PaymentProof, ProofStatus, ProcessingLog
+from app.models import PaymentProof, ProcessingLog
 from app.supabase_client import supabase
-from app.services.ocr import get_pdf_text
+from app.services.ocr import extract_text_from_pdf
 from app.services.extractor import extract_payment_data
 from app.services.erp_sync import sync_to_erp
 from app.config import settings
@@ -12,16 +12,16 @@ from app.config import settings
 def process_pending_proofs():
     db: Session = SessionLocal()
     try:
-        proofs = db.query(PaymentProof).filter(PaymentProof.status == ProofStatus.pending).all()
+        proofs = db.query(PaymentProof).filter(PaymentProof.status == "pending").all()
         for proof in proofs:
             try:
-                proof.status = ProofStatus.processing
+                proof.status = "processing"
                 db.commit()
 
                 pdf_bytes = supabase.storage.from_(settings.supabase_bucket).download(proof.file_path)
                 _log(db, proof.id, "download", "success", "PDF downloaded from storage")
 
-                text = get_pdf_text(pdf_bytes)
+                text = extract_text_from_pdf(pdf_bytes)
                 _log(db, proof.id, "ocr", "success", f"Extracted {len(text)} chars")
 
                 data = extract_payment_data(text)
@@ -42,10 +42,10 @@ def process_pending_proofs():
                 finally:
                     erp_db.close()
 
-                proof.status = ProofStatus.completed
+                proof.status = "completed"
 
             except Exception as e:
-                proof.status = ProofStatus.failed
+                proof.status = "failed"
                 proof.error_message = str(e)
                 _log(db, proof.id, "pipeline", "failure", str(e))
 
