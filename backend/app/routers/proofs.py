@@ -1,64 +1,35 @@
-import uuid
-from fastapi import APIRouter, Depends, Query
-from sqlalchemy.orm import Session
-from app.database import get_db
-from app.models import PaymentProof
+from fastapi import APIRouter, Query
+from app.supabase_client import supabase
 
 router = APIRouter()
 
 
 @router.get("/proofs")
 def list_proofs(
-    tenant_id: str = Query("default"),
+    tenant_id: str = Query(None),
     status: str = None,
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
-    db: Session = Depends(get_db),
 ):
-    query = db.query(PaymentProof).filter(
-        PaymentProof.tenant_id == uuid.UUID(tenant_id) if tenant_id != "default" else True
-    )
+    query = supabase.table("payment_proofs").select("*", count="exact")
+    if tenant_id:
+        query = query.eq("tenant_id", tenant_id)
     if status:
-        query = query.filter(PaymentProof.status == status)
-    total = query.count()
-    items = query.order_by(PaymentProof.created_at.desc()).offset((page - 1) * page_size).limit(page_size).all()
+        query = query.eq("status", status)
+    query = query.order("created_at", desc=True).range((page - 1) * page_size, page * page_size - 1)
+    result = query.execute()
+
     return {
-        "total": total,
+        "total": result.count if hasattr(result, "count") else len(result.data),
         "page": page,
         "page_size": page_size,
-        "items": [
-            {
-                "id": str(p.id),
-                "file_name": p.file_name,
-                "file_size": p.file_size,
-                "source": p.source,
-                "status": p.status,
-                "erp_status": p.erp_status,
-                "extracted_data": p.extracted_data,
-                "error_message": p.error_message,
-                "created_at": p.created_at.isoformat() if p.created_at else None,
-            }
-            for p in items
-        ],
+        "items": result.data,
     }
 
 
 @router.get("/proofs/{proof_id}")
-def get_proof(proof_id: str, db: Session = Depends(get_db)):
-    proof = db.query(PaymentProof).filter(PaymentProof.id == uuid.UUID(proof_id)).first()
-    if not proof:
-        return {"error": "not found"}, 404
-    return {
-        "id": str(proof.id),
-        "file_name": proof.file_name,
-        "file_size": proof.file_size,
-        "file_path": proof.file_path,
-        "source": proof.source,
-        "status": proof.status,
-        "erp_status": proof.erp_status,
-        "extracted_data": proof.extracted_data,
-        "erp_receipt_id": proof.erp_receipt_id,
-        "error_message": proof.error_message,
-        "created_at": proof.created_at.isoformat() if proof.created_at else None,
-        "updated_at": proof.updated_at.isoformat() if proof.updated_at else None,
-    }
+def get_proof(proof_id: str):
+    result = supabase.table("payment_proofs").select("*").eq("id", proof_id).execute()
+    if not result.data:
+        return {"error": "not found"}
+    return result.data[0]

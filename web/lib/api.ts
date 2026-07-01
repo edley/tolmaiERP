@@ -3,7 +3,6 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 export async function uploadProof(
   file: File,
   tenantId: string,
-  _token: string,
 ): Promise<{ id: string; file_name: string; status: string }> {
   const form = new FormData();
   form.append("file", file);
@@ -22,12 +21,10 @@ export async function uploadProof(
 }
 
 export async function fetchProofs(
-  tenantId: string,
-  _token: string,
   status?: string,
   page = 1,
 ) {
-  const params = new URLSearchParams({ tenant_id: tenantId, page: String(page) });
+  const params = new URLSearchParams({ page: String(page) });
   if (status) params.set("status", status);
 
   const res = await fetch(`${API_URL}/api/proofs?${params}`);
@@ -35,13 +32,13 @@ export async function fetchProofs(
   return res.json();
 }
 
-export async function fetchProof(proofId: string, _token: string) {
+export async function fetchProof(proofId: string) {
   const res = await fetch(`${API_URL}/api/proofs/${proofId}`);
   if (!res.ok) throw new Error("Failed to fetch proof");
   return res.json();
 }
 
-export async function syncProofToErp(proofId: string, _token: string) {
+export async function syncProofToErp(proofId: string) {
   const res = await fetch(`${API_URL}/api/proofs/${proofId}/sync`, {
     method: "POST",
   });

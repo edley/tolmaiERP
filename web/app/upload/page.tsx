@@ -38,8 +38,7 @@ export default function UploadPage() {
     setUploading(true);
     setError("");
     try {
-      const token = (await supabase.auth.getSession()).data.session?.access_token || "";
-      const res = await uploadProof(file, user.id, token);
+      const res = await uploadProof(file, user.id);
       setResult(res);
     } catch (err: any) {
       setError(err.message);

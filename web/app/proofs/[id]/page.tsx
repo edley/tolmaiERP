@@ -32,8 +32,7 @@ export default function ProofDetailPage() {
   async function loadProof() {
     setLoading(true);
     try {
-      const token = (await supabase.auth.getSession()).data.session?.access_token || "";
-      const data = await fetchProof(proofId, token);
+      const data = await fetchProof(proofId);
       setProof(data);
     } catch (err) {
       console.error(err);
@@ -45,8 +44,7 @@ export default function ProofDetailPage() {
   async function handleSync() {
     setSyncing(true);
     try {
-      const token = (await supabase.auth.getSession()).data.session?.access_token || "";
-      const result = await syncProofToErp(proofId, token);
+      const result = await syncProofToErp(proofId);
       setProof((prev: any) => ({ ...prev, erp_status: result.erp_status, erp_receipt_id: result.erp_receipt_id }));
     } catch (err: any) {
       alert(err.message);

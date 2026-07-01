@@ -41,8 +41,7 @@ export default function ProofsPage() {
   async function loadProofs() {
     setLoading(true);
     try {
-      const token = (await supabase.auth.getSession()).data.session?.access_token || "";
-      const data = await fetchProofs(user.id, token, statusFilter || undefined);
+      const data = await fetchProofs(statusFilter || undefined);
       setProofs(data.items);
     } catch (err) {
       console.error(err);
