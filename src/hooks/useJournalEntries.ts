@@ -81,68 +81,63 @@ export function useJournalEntries() {
       const { data, error } = await query
       if (error) {
         console.error('Failed to fetch journal entries:', error.message)
-      } else if (data) {
-        fromDb = true
-        if (data.length > 0) {
-          let allocMap: Record<string, { allocation_code: string; expense_type: string | null; amount: number }[]> = {}
-          try {
-            const { data: allocData } = await supabase!
-              .from('journal_entry_item_allocations')
-              .select('journal_entry_item_id, allocation_code, expense_type, amount')
-              .eq('company_id', companyId)
-            if (allocData) {
-              for (const a of allocData as any[]) {
-                const itemId = a.journal_entry_item_id
-                if (!allocMap[itemId]) allocMap[itemId] = []
-                allocMap[itemId].push({ allocation_code: a.allocation_code, expense_type: a.expense_type ?? null, amount: Number(a.amount) })
-              }
+      } else if (data && data.length > 0) {
+        let allocMap: Record<string, { allocation_code: string; expense_type: string | null; amount: number }[]> = {}
+        try {
+          const { data: allocData } = await supabase!
+            .from('journal_entry_item_allocations')
+            .select('journal_entry_item_id, allocation_code, expense_type, amount')
+            .eq('company_id', companyId)
+          if (allocData) {
+            for (const a of allocData as any[]) {
+              const itemId = a.journal_entry_item_id
+              if (!allocMap[itemId]) allocMap[itemId] = []
+              allocMap[itemId].push({ allocation_code: a.allocation_code, expense_type: a.expense_type ?? null, amount: Number(a.amount) })
             }
-          } catch { /* allocations table may not exist */ }
-
-          const mapped: JournalEntry[] = data.map((r: any) => ({
-            id: r.id,
-            entry_number: r.entry_number,
-            posting_date: r.posting_date,
-            description: r.description,
-            total_debit: Number(r.total_debit),
-            total_credit: Number(r.total_credit),
-            status: r.status,
-            period_id: r.period_id ?? null,
-            created_by: r.created_by ?? null,
-            created_by_name: r.created_by_name ?? null,
-            created_at: r.created_at,
-            updated_at: r.updated_at,
-            submitted_by: r.submitted_by ?? null,
-            submitted_by_name: r.submitted_by_name ?? null,
-            submitted_at: r.submitted_at ?? null,
-            approved_by: r.approved_by ?? null,
-            approved_by_name: r.approved_by_name ?? null,
-            approved_at: r.approved_at ?? null,
-            posted_by: r.posted_by ?? null,
-            posted_by_name: r.posted_by_name ?? null,
-            posted_at: r.posted_at ?? null,
-            items: (r.items ?? []).map((item: any) => ({
-              id: item.id,
-              journal_entry_id: item.journal_entry_id,
-              account_id: item.account_id,
-              debit: Number(item.debit),
-              credit: Number(item.credit),
-              description: item.description,
-              allocations: allocMap[item.id] ?? [],
-            })),
-          }))
-          const remoteIds = new Set(mapped.map((e) => e.id))
-          const localOnly = (demoEntries ?? []).filter((e) => !remoteIds.has(e.id))
-          if (localOnly.length > 0) {
-            mapped.push(...localOnly)
-            mapped.sort((a, b) => b.posting_date.localeCompare(a.posting_date) || b.created_at.localeCompare(a.created_at))
           }
-          setEntries(mapped)
-          demoEntries = mapped
-        } else {
-          // DB returned zero rows for this company — clear stale demoEntries from previous company
-          demoEntries = null
+        } catch { /* allocations table may not exist */ }
+
+        const mapped: JournalEntry[] = data.map((r: any) => ({
+          id: r.id,
+          entry_number: r.entry_number,
+          posting_date: r.posting_date,
+          description: r.description,
+          total_debit: Number(r.total_debit),
+          total_credit: Number(r.total_credit),
+          status: r.status,
+          period_id: r.period_id ?? null,
+          created_by: r.created_by ?? null,
+          created_by_name: r.created_by_name ?? null,
+          created_at: r.created_at,
+          updated_at: r.updated_at,
+          submitted_by: r.submitted_by ?? null,
+          submitted_by_name: r.submitted_by_name ?? null,
+          submitted_at: r.submitted_at ?? null,
+          approved_by: r.approved_by ?? null,
+          approved_by_name: r.approved_by_name ?? null,
+          approved_at: r.approved_at ?? null,
+          posted_by: r.posted_by ?? null,
+          posted_by_name: r.posted_by_name ?? null,
+          posted_at: r.posted_at ?? null,
+          items: (r.items ?? []).map((item: any) => ({
+            id: item.id,
+            journal_entry_id: item.journal_entry_id,
+            account_id: item.account_id,
+            debit: Number(item.debit),
+            credit: Number(item.credit),
+            description: item.description,
+            allocations: allocMap[item.id] ?? [],
+          })),
+        }))
+        const remoteIds = new Set(mapped.map((e) => e.id))
+        const localOnly = (demoEntries ?? []).filter((e) => !remoteIds.has(e.id))
+        if (localOnly.length > 0) {
+          mapped.push(...localOnly)
+          mapped.sort((a, b) => b.posting_date.localeCompare(a.posting_date) || b.created_at.localeCompare(a.created_at))
         }
+        setEntries(mapped)
+        demoEntries = mapped
+        fromDb = true
       }
     }
 

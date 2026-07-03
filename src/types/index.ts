@@ -124,6 +124,7 @@ export interface AllocationType {
   name: string
   description: string | null
   active: boolean
+  company_id?: string | null
   created_at: string
   updated_at: string
   gl_account?: Account

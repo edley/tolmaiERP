@@ -6,13 +6,14 @@ import { usePeriod } from '../../contexts/PeriodContext'
 import { DataTable } from '../../components/DataTable'
 import { DemoBanner } from '../../components/DemoBanner'
 import { PageLayout } from '../../components/PageLayout'
-import { getMappings } from '../../lib/allocationMappings'
+import { useAllocationMappings } from '../../hooks/useAllocationMappings'
 import { supabase, isOnline } from '../../lib/supabase'
 import { exportToExcel } from '../../lib/exportToExcel'
 import type { ExpenseTypeReportRow } from '../../hooks/useExpenseTypeReport'
 
 export function ExpenseTypeAnalysis() {
   const { accounts } = useAccounts()
+  const { mappings: allMappings } = useAllocationMappings()
   const { periods, currentPeriod } = usePeriod()
   const { rows, loading, error, isDemo, run } = useExpenseTypeReport()
 
@@ -20,11 +21,6 @@ export function ExpenseTypeAnalysis() {
   const [selectedGlCode, setSelectedGlCode] = useState('')
   const [selectedAllocCode, setSelectedAllocCode] = useState('')
   const [supabaseCodes, setSupabaseCodes] = useState<string[]>([])
-
-  const allMappings = useMemo(() => {
-    if (accounts.length === 0) return []
-    return getMappings(accounts)
-  }, [accounts])
 
   const allocAccounts = useMemo(() =>
     accounts.filter((a) => a.allocation_allow && !a.is_group).sort((a, b) => (a.code ?? '').localeCompare(b.code ?? '')),

@@ -2,13 +2,13 @@ import { useState, useRef, useMemo } from 'react'
 import { Plus, Trash2, Split } from 'lucide-react'
 import { useAccounts } from '../hooks/useAccounts'
 import { useJournalEntries } from '../hooks/useJournalEntries'
-import { useTransactionTypes } from '../hooks/useTransactionTypes'
-import { generateEntryNumber } from '../lib/journalEntries'
+import { useAllocationMappings } from '../hooks/useAllocationMappings'
+import { useAllocationTypes } from '../hooks/useAllocationTypes'
 import { LookupField } from './LookupField'
 import { EditableNumber } from './EditableNumber'
 import { Modal } from './Modal'
-import { getMappings } from '../lib/allocationMappings'
-import { getTypesForGlCode } from '../lib/allocationTypes'
+import { useTransactionTypes } from '../hooks/useTransactionTypes'
+import { generateEntryNumber } from '../lib/journalEntries'
 import { usePeriod } from '../contexts/PeriodContext'
 import type { JournalEntry, JournalEntryItem } from '../types'
 
@@ -45,6 +45,8 @@ export function JournalEntryForm({ onClose, onSuccess, entry }: JournalEntryForm
   const { accounts } = useAccounts()
   const { entries, createEntry, updateEntry } = useJournalEntries()
   const { types: transactionTypes } = useTransactionTypes()
+  const { mappings } = useAllocationMappings()
+  const { types } = useAllocationTypes()
   const { periods, currentPeriod } = usePeriod()
 
   const isEditing = !!entry
@@ -85,10 +87,7 @@ export function JournalEntryForm({ onClose, onSuccess, entry }: JournalEntryForm
   const [allocError, setAllocError] = useState<string | null>(null)
   const linesEndRef = useRef<HTMLDivElement>(null)
 
-  const allMappings = useMemo(() => {
-    if (accounts.length === 0) return []
-    return getMappings(accounts)
-  }, [accounts])
+  const mappingsWithAccounts = mappings
 
   const detailAccounts = accounts
   const selectedType = transactionTypes.find((t) => t.id === transactionTypeId)
@@ -453,7 +452,7 @@ export function JournalEntryForm({ onClose, onSuccess, entry }: JournalEntryForm
                 <div className="flex items-center justify-center overflow-hidden">
                   {(() => {
                     const glAccount = accounts.find((a) => a.id === line.account_id)
-                  const canAlloc = glAccount?.allocation_allow && glAccount.code && allMappings.some((m) => m.gl_code === glAccount.code && m.active)
+                    const canAlloc = glAccount?.allocation_allow && glAccount.code && mappingsWithAccounts.some((m) => m.gl_code === glAccount.code && m.active)
                   const totalAlloc = line.allocations.reduce((s, a) => s + (parseFloat(a.amount) || 0), 0)
                   const lineAmt = parseFloat(line.amount) || 0
                   const balanced = lineAmt > 0 && Math.abs(totalAlloc - lineAmt) < 0.01
@@ -593,10 +592,10 @@ export function JournalEntryForm({ onClose, onSuccess, entry }: JournalEntryForm
           const glAccount = accounts.find((a) => a.id === line.account_id)
           const lineAmount = parseFloat(line.amount) || 0
           const totalAlloc = line.allocations.reduce((s, a) => s + (parseFloat(a.amount) || 0), 0)
-          const allocTypes = glAccount?.code ? getTypesForGlCode(glAccount.code, accounts) : []
+          const allocTypes = glAccount?.code ? types.filter((t) => t.gl_code === glAccount.code && t.active).map((t) => t.name) : []
           const hasTypes = allocTypes.length > 0
           const codeOptions = glAccount?.code
-            ? allMappings.filter((m) => m.gl_code === glAccount.code && m.active).map((m) => m.allocation_code)
+            ? mappingsWithAccounts.filter((m) => m.gl_code === glAccount.code && m.active).map((m) => m.allocation_code)
             : []
           return (
             <div className="space-y-4">

@@ -8,7 +8,8 @@ import { Modal } from '../../components/Modal'
 import { ConfirmModal } from '../../components/ConfirmModal'
 import { useAccounts } from '../../hooks/useAccounts'
 import { useRBAC } from '../../hooks/useRBAC'
-import { getMappings, addMapping, updateMapping, deleteMapping } from '../../lib/allocationMappings'
+import { useAllocationMappings } from '../../hooks/useAllocationMappings'
+import { resolveMappingAccounts } from '../../lib/allocationMappings'
 import type { AllocationMapping } from '../../types'
 
 type ViewMode = 'list' | 'detail' | 'new'
@@ -20,7 +21,7 @@ export function AllocationMappings() {
   const canCreate = crud('allocation_mapping', 'create')
   const canUpdate = crud('allocation_mapping', 'update')
   const canDelete = crud('allocation_mapping', 'delete')
-  const [tick, setTick] = useState(0)
+  const { mappings: rawMappings, addMapping, updateMapping, deleteMapping } = useAllocationMappings()
   const [view, setView] = useState<ViewMode>('list')
 
   // GL code selection
@@ -43,14 +44,12 @@ export function AllocationMappings() {
 
   const newGlRef = useRef<HTMLInputElement>(null)
 
-  const allMappings = useMemo(() => getMappings(accounts), [accounts, tick])
+  const allMappings = useMemo(() => resolveMappingAccounts(rawMappings, accounts), [rawMappings, accounts])
 
   const detailMappings = useMemo(() => {
     if (!selectedGlCode) return []
     return allMappings.filter((m) => m.gl_code === selectedGlCode)
   }, [allMappings, selectedGlCode])
-
-  const rerender = () => setTick((t) => t + 1)
 
   // Group mappings by GL code (for the list view)
   const groups = useMemo(() => {
@@ -129,7 +128,7 @@ export function AllocationMappings() {
     setShowNewModal(true)
   }
 
-  const handleAddCode = () => {
+  const handleAddCode = async () => {
     setCodeError(null)
     const code = newCode.trim().toUpperCase()
     if (!code) { setCodeError('Allocation code is required'); return }
@@ -138,26 +137,31 @@ export function AllocationMappings() {
       setCodeError(`Code "${code}" already exists for this GL code`)
       return
     }
-    addMapping({
-      gl_account_id: selectedGlId || null,
-      gl_code: selectedGlCode,
-      allocation_code: code,
-      description: newDesc.trim() || null,
-      active: true,
-    }, accounts)
-    setShowNewModal(false)
-    rerender()
+    try {
+      await addMapping({
+        gl_account_id: selectedGlId || null,
+        gl_code: selectedGlCode,
+        allocation_code: code,
+        description: newDesc.trim() || null,
+        active: true,
+      })
+      setShowNewModal(false)
+    } catch (err) {
+      setCodeError(err instanceof Error ? err.message : 'Failed to add code')
+    }
   }
 
-  const handleDeleteCode = (m: AllocationMapping) => {
+  const handleDeleteCode = async (m: AllocationMapping) => {
     if (!confirm(`Delete allocation code "${m.allocation_code}"?`)) return
-    deleteMapping(m.id, accounts)
-    rerender()
+    try {
+      await deleteMapping(m.id)
+    } catch {}
   }
 
-  const toggleActive = (m: AllocationMapping) => {
-    updateMapping(m.id, { active: !m.active }, accounts)
-    rerender()
+  const toggleActive = async (m: AllocationMapping) => {
+    try {
+      await updateMapping(m.id, { active: !m.active })
+    } catch {}
   }
 
   const startEdit = (m: AllocationMapping) => {
@@ -165,25 +169,27 @@ export function AllocationMappings() {
     setEditDesc(m.description ?? '')
   }
 
-  const saveEdit = (m: AllocationMapping) => {
-    updateMapping(m.id, { description: editDesc.trim() || null }, accounts)
-    setEditingId(null)
-    rerender()
+  const saveEdit = async (m: AllocationMapping) => {
+    try {
+      await updateMapping(m.id, { description: editDesc.trim() || null })
+      setEditingId(null)
+    } catch {}
   }
 
   const cancelEdit = () => setEditingId(null)
 
   const handleDeleteGroup = async () => {
     setDeletingGroup(true)
-    for (const m of detailMappings) {
-      deleteMapping(m.id, accounts)
-    }
+    try {
+      for (const m of detailMappings) {
+        await deleteMapping(m.id)
+      }
+    } catch {}
     setDeletingGroup(false)
     setShowDeleteGroup(false)
     setSelectedGlId('')
     setSelectedGlCode('')
     setView('list')
-    rerender()
   }
 
   const goToList = () => {

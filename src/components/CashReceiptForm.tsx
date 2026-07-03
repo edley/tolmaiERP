@@ -2,13 +2,13 @@ import { useState, useRef, useMemo } from 'react'
 import { Plus, Trash2, Split } from 'lucide-react'
 import { useAccounts } from '../hooks/useAccounts'
 import { useReceipts } from '../hooks/useReceipts'
+import { useAllocationMappings } from '../hooks/useAllocationMappings'
+import { useAllocationTypes } from '../hooks/useAllocationTypes'
 import { getPaymentModes } from '../lib/paymentModes'
 import { generateReceiptNumber } from '../lib/receipts'
 import { LookupField } from './LookupField'
 import { EditableNumber } from './EditableNumber'
 import { Modal } from './Modal'
-import { getMappings } from '../lib/allocationMappings'
-import { getTypesForGlCode } from '../lib/allocationTypes'
 import { usePeriod } from '../contexts/PeriodContext'
 import { useCompany } from '../contexts/CompanyContext'
 import { useBudgetCheck } from '../hooks/useBudgetCheck'
@@ -45,6 +45,8 @@ export function CashReceiptForm({ onClose, onSuccess, receipt }: CashReceiptForm
   const { currentCompany } = useCompany()
   const { accounts } = useAccounts()
   const { receipts, createReceipt, updateReceipt } = useReceipts()
+  const { mappings } = useAllocationMappings()
+  const { types } = useAllocationTypes()
   const { periods, currentPeriod } = usePeriod()
 
   const isEditing = !!receipt
@@ -91,10 +93,7 @@ export function CashReceiptForm({ onClose, onSuccess, receipt }: CashReceiptForm
   const linesEndRef = useRef<HTMLDivElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
 
-  const allMappings = useMemo(() => {
-    if (accounts.length === 0) return []
-    return getMappings(accounts)
-  }, [accounts])
+  const mappingsWithAccounts = mappings
 
   const periodOptions = useMemo(() =>
     periods.map((p) => ({ id: p.id, label: p.name, sublabel: `${p.start_date} — ${p.end_date}${p.status === 'closed' ? ' (Closed)' : ''}` })),
@@ -444,7 +443,7 @@ export function CashReceiptForm({ onClose, onSuccess, receipt }: CashReceiptForm
                 <div className="flex items-center justify-center">
                   {(() => {
                     const glAccount = accounts.find((a) => a.id === line.gl_account_id)
-                    const canAlloc = glAccount?.allocation_allow && glAccount.code && allMappings.some((m) => m.gl_code === glAccount.code && m.active)
+                    const canAlloc = glAccount?.allocation_allow && glAccount.code && mappingsWithAccounts.some((m) => m.gl_code === glAccount.code && m.active)
                     const totalAlloc = line.allocations.reduce((s, a) => s + (parseFloat(a.amount) || 0), 0)
                     const lineAmt = parseFloat(line.amount) || 0
                     const balanced = lineAmt > 0 && Math.abs(totalAlloc - lineAmt) < 0.01
@@ -577,10 +576,10 @@ export function CashReceiptForm({ onClose, onSuccess, receipt }: CashReceiptForm
           const glAccount = accounts.find((a) => a.id === line.gl_account_id)
           const lineAmount = parseFloat(line.amount) || 0
           const totalAlloc = line.allocations.reduce((s, a) => s + (parseFloat(a.amount) || 0), 0)
-          const allocTypes = glAccount?.code ? getTypesForGlCode(glAccount.code, accounts) : []
+          const allocTypes = glAccount?.code ? types.filter((t) => t.gl_code === glAccount.code && t.active).map((t) => t.name) : []
           const hasTypes = allocTypes.length > 0
           const codeOptions = glAccount?.code
-            ? allMappings.filter((m) => m.gl_code === glAccount.code && m.active).map((m) => m.allocation_code)
+            ? mappingsWithAccounts.filter((m) => m.gl_code === glAccount.code && m.active).map((m) => m.allocation_code)
             : []
           return (
             <div className="space-y-4">

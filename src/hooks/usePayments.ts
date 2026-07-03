@@ -80,60 +80,55 @@ export function usePayments() {
       const { data, error } = await query
       if (error) {
         console.error('Failed to fetch payments:', error.message)
-      } else if (data) {
-        if (data.length > 0) {
-          // Try to fetch allocations separately (best-effort)
-          let allocMap: Record<string, { allocation_code: string; expense_type: string | null; amount: number }[]> = {}
-          try {
-            const { data: allocData } = await supabase
-              .from('payment_line_allocations')
-              .select('payment_line_id, allocation_code, expense_type, amount')
-              .eq('company_id', companyId)
-            if (allocData) {
-              for (const a of allocData as any[]) {
-                const lineId = a.payment_line_id
-                if (!allocMap[lineId]) allocMap[lineId] = []
-                allocMap[lineId].push({ allocation_code: a.allocation_code, expense_type: a.expense_type ?? null, amount: Number(a.amount) })
-              }
+      } else if (data && data.length > 0) {
+        // Try to fetch allocations separately (best-effort)
+        let allocMap: Record<string, { allocation_code: string; expense_type: string | null; amount: number }[]> = {}
+        try {
+          const { data: allocData } = await supabase
+            .from('payment_line_allocations')
+            .select('payment_line_id, allocation_code, expense_type, amount')
+            .eq('company_id', companyId)
+          if (allocData) {
+            for (const a of allocData as any[]) {
+              const lineId = a.payment_line_id
+              if (!allocMap[lineId]) allocMap[lineId] = []
+              allocMap[lineId].push({ allocation_code: a.allocation_code, expense_type: a.expense_type ?? null, amount: Number(a.amount) })
             }
-          } catch { /* allocations table may not exist */ }
+          }
+        } catch { /* allocations table may not exist */ }
 
-          const mapped: Payment[] = data.map((r: any) => ({
-            id: r.id,
-            voucher_number: r.voucher_number,
-            period_id: r.period_id,
-            date: r.date,
-            voucher_amount: Number(r.voucher_amount),
-            mode_of_payment_id: r.mode_of_payment_id,
-            paid_to: r.paid_to,
-            invoice_no: r.invoice_no ?? '',
-            description: r.description ?? '',
-            lines: (r.lines ?? []).map((l: any) => ({
-              id: l.id,
-              gl_account_id: l.gl_account_id,
-              amount: Number(l.amount),
-              allocations: allocMap[l.id] ?? [],
-            })),
-            status: r.status,
-            created_at: r.created_at,
-            created_by: r.created_by ?? null,
-            created_by_name: r.created_by_name ?? null,
-            submitted_by: r.submitted_by ?? null,
-            submitted_by_name: r.submitted_by_name ?? null,
-            submitted_at: r.submitted_at ?? null,
-            approved_by: r.approved_by ?? null,
-            approved_by_name: r.approved_by_name ?? null,
-            approved_at: r.approved_at ?? null,
-            posted_by: r.posted_by ?? null,
-            posted_by_name: r.posted_by_name ?? null,
-            posted_at: r.posted_at ?? null,
-          }))
-          setPayments(mapped)
-          demoPayments = mapped
-        } else {
-          setPayments([])
-          demoPayments = []
-        }
+        const mapped: Payment[] = data.map((r: any) => ({
+          id: r.id,
+          voucher_number: r.voucher_number,
+          period_id: r.period_id,
+          date: r.date,
+          voucher_amount: Number(r.voucher_amount),
+          mode_of_payment_id: r.mode_of_payment_id,
+          paid_to: r.paid_to,
+          invoice_no: r.invoice_no ?? '',
+          description: r.description ?? '',
+          lines: (r.lines ?? []).map((l: any) => ({
+            id: l.id,
+            gl_account_id: l.gl_account_id,
+            amount: Number(l.amount),
+            allocations: allocMap[l.id] ?? [],
+          })),
+          status: r.status,
+          created_at: r.created_at,
+          created_by: r.created_by ?? null,
+          created_by_name: r.created_by_name ?? null,
+          submitted_by: r.submitted_by ?? null,
+          submitted_by_name: r.submitted_by_name ?? null,
+          submitted_at: r.submitted_at ?? null,
+          approved_by: r.approved_by ?? null,
+          approved_by_name: r.approved_by_name ?? null,
+          approved_at: r.approved_at ?? null,
+          posted_by: r.posted_by ?? null,
+          posted_by_name: r.posted_by_name ?? null,
+          posted_at: r.posted_at ?? null,
+        }))
+        setPayments(mapped)
+        demoPayments = mapped
         fromDb = true
       }
     }

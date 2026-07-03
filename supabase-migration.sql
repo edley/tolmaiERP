@@ -1068,3 +1068,34 @@ END $$;
 ALTER TABLE budget_allocation_codes DROP CONSTRAINT IF EXISTS budget_allocation_codes_company_id_period_id_allocation_code_key;
 ALTER TABLE budget_allocation_codes DROP CONSTRAINT IF EXISTS budget_allocation_codes_company_id_period_id_gl_account_id_allocation_code_key;
 ALTER TABLE budget_allocation_codes ADD UNIQUE (company_id, period_id, gl_account_id, allocation_code, allocation_type);
+
+-- ============================================================
+-- 23. Allocation Types Dedicated Table
+-- ============================================================
+CREATE TABLE IF NOT EXISTS allocation_types (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  gl_account_id UUID REFERENCES accounts(id) ON DELETE CASCADE,
+  gl_code TEXT,
+  name TEXT NOT NULL,
+  description TEXT,
+  active BOOLEAN DEFAULT TRUE,
+  company_id UUID NOT NULL REFERENCES companies(id),
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE allocation_types ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Company-scoped access on allocation_types" ON allocation_types;
+CREATE POLICY "Company-scoped access on allocation_types"
+  ON allocation_types FOR ALL TO authenticated
+  USING (company_id IN (SELECT public.user_company_ids()))
+  WITH CHECK (company_id IN (SELECT public.user_company_ids()));
+
+CREATE INDEX IF NOT EXISTS idx_allocation_types_account ON allocation_types(gl_account_id);
+CREATE INDEX IF NOT EXISTS idx_allocation_types_company ON allocation_types(company_id);
+
+DROP TRIGGER IF EXISTS update_allocation_types_updated_at ON allocation_types;
+CREATE TRIGGER update_allocation_types_updated_at
+  BEFORE UPDATE ON allocation_types
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at();

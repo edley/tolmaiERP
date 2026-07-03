@@ -9,8 +9,8 @@ import { useCompany } from '../../contexts/CompanyContext'
 import { useAccounts } from '../../hooks/useAccounts'
 import { usePeriod } from '../../contexts/PeriodContext'
 import { useRBAC } from '../../hooks/useRBAC'
-import { getMappings } from '../../lib/allocationMappings'
-import { getTypes } from '../../lib/allocationTypes'
+import { useAllocationMappings } from '../../hooks/useAllocationMappings'
+import { useAllocationTypes } from '../../hooks/useAllocationTypes'
 import {
   getGlAccountBudgets,
   upsertGlAccountBudget,
@@ -23,6 +23,8 @@ import type { BudgetGlAccount, BudgetAllocationCode, AllocationMapping } from '.
 export function BudgetPage() {
   const { currentCompany } = useCompany()
   const { accounts } = useAccounts()
+  const { mappings: allMappings } = useAllocationMappings()
+  const { types: allTypes } = useAllocationTypes()
   const { periods, currentPeriod, setCurrentPeriod } = usePeriod()
   const { crud } = useRBAC()
   const canDelete = crud('budget', 'delete')
@@ -244,10 +246,8 @@ export function BudgetPage() {
     const code = acct?.code
     console.log('openAllocations — glAccountId:', glAccountId, 'code:', code, 'accounts count:', accounts.length)
     if (code) {
-      const mappings = getMappings(accounts)
-      setAllocMappings(mappings.filter((m) => m.gl_code === code))
-      const types = getTypes(accounts)
-      setAllocTypes(types.filter((t) => t.gl_code === code && t.active).map((t) => t.name))
+      setAllocMappings(allMappings.filter((m) => m.gl_code === code))
+      setAllocTypes(allTypes.filter((t) => t.gl_code === code && t.active).map((t) => t.name))
     } else {
       setAllocMappings([])
       setAllocTypes([])

@@ -8,7 +8,8 @@ import { Modal } from '../../components/Modal'
 import { ConfirmModal } from '../../components/ConfirmModal'
 import { useAccounts } from '../../hooks/useAccounts'
 import { useRBAC } from '../../hooks/useRBAC'
-import { getTypes, addType, updateType, deleteType } from '../../lib/allocationTypes'
+import { useAllocationTypes } from '../../hooks/useAllocationTypes'
+import { resolveTypeAccounts } from '../../lib/allocationTypes'
 import type { AllocationType } from '../../types'
 
 type ViewMode = 'list' | 'detail' | 'new'
@@ -20,7 +21,7 @@ export function AllocationTypes() {
   const canCreate = crud('allocation_type', 'create')
   const canUpdate = crud('allocation_type', 'update')
   const canDelete = crud('allocation_type', 'delete')
-  const [tick, setTick] = useState(0)
+  const { types: rawTypes, addType, updateType, deleteType } = useAllocationTypes()
   const [view, setView] = useState<ViewMode>('list')
 
   const [selectedGlId, setSelectedGlId] = useState('')
@@ -39,14 +40,12 @@ export function AllocationTypes() {
 
   const newGlRef = useRef<HTMLInputElement>(null)
 
-  const allTypes = useMemo(() => getTypes(accounts), [accounts, tick])
+  const allTypes = useMemo(() => resolveTypeAccounts(rawTypes, accounts), [rawTypes, accounts])
 
   const detailTypes = useMemo(() => {
     if (!selectedGlCode) return []
     return allTypes.filter((t) => t.gl_code === selectedGlCode)
   }, [allTypes, selectedGlCode])
-
-  const rerender = () => setTick((t) => t + 1)
 
   const groups = useMemo(() => {
     const map = new Map<string, AllocationType[]>()
@@ -123,7 +122,7 @@ export function AllocationTypes() {
     setShowNewModal(true)
   }
 
-  const handleAddType = () => {
+  const handleAddType = async () => {
     setTypeError(null)
     const name = newName.trim()
     if (!name) { setTypeError('Type name is required'); return }
@@ -132,26 +131,31 @@ export function AllocationTypes() {
       setTypeError(`Type "${name}" already exists for this GL code`)
       return
     }
-    addType({
-      gl_account_id: selectedGlId || null,
-      gl_code: selectedGlCode,
-      name,
-      description: newDesc.trim() || null,
-      active: true,
-    }, accounts)
-    setShowNewModal(false)
-    rerender()
+    try {
+      await addType({
+        gl_account_id: selectedGlId || null,
+        gl_code: selectedGlCode,
+        name,
+        description: newDesc.trim() || null,
+        active: true,
+      })
+      setShowNewModal(false)
+    } catch (err) {
+      setTypeError(err instanceof Error ? err.message : 'Failed to add type')
+    }
   }
 
-  const handleDeleteType = (t: AllocationType) => {
+  const handleDeleteType = async (t: AllocationType) => {
     if (!confirm(`Delete allocation type "${t.name}"?`)) return
-    deleteType(t.id, accounts)
-    rerender()
+    try {
+      await deleteType(t.id)
+    } catch {}
   }
 
-  const toggleActive = (t: AllocationType) => {
-    updateType(t.id, { active: !t.active }, accounts)
-    rerender()
+  const toggleActive = async (t: AllocationType) => {
+    try {
+      await updateType(t.id, { active: !t.active })
+    } catch {}
   }
 
   const startEdit = (t: AllocationType) => {
@@ -159,25 +163,27 @@ export function AllocationTypes() {
     setEditDesc(t.description ?? '')
   }
 
-  const saveEdit = (t: AllocationType) => {
-    updateType(t.id, { description: editDesc.trim() || null }, accounts)
-    setEditingId(null)
-    rerender()
+  const saveEdit = async (t: AllocationType) => {
+    try {
+      await updateType(t.id, { description: editDesc.trim() || null })
+      setEditingId(null)
+    } catch {}
   }
 
   const cancelEdit = () => setEditingId(null)
 
   const handleDeleteGroup = async () => {
     setDeletingGroup(true)
-    for (const t of detailTypes) {
-      deleteType(t.id, accounts)
-    }
+    try {
+      for (const t of detailTypes) {
+        await deleteType(t.id)
+      }
+    } catch {}
     setDeletingGroup(false)
     setShowDeleteGroup(false)
     setSelectedGlId('')
     setSelectedGlCode('')
     setView('list')
-    rerender()
   }
 
   const goToList = () => {
