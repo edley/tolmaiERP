@@ -1,5 +1,6 @@
 import uuid
 import os
+import threading
 from fastapi import APIRouter, UploadFile, File, HTTPException
 from app.supabase_client import supabase
 from app.config import settings
@@ -46,19 +47,14 @@ async def upload_proof(
         "created_at": datetime.utcnow().isoformat(),
     }).execute()
 
-    try:
-        receipt_result = process_proof(proof_id)
-        return {
-            "id": proof_id,
-            "file_name": file.filename or "proof.pdf",
-            "status": "completed",
-            "receipt": receipt_result["extracted"],
-            "receipt_id": receipt_result["receipt_id"],
-        }
-    except Exception as e:
-        return {
-            "id": proof_id,
-            "file_name": file.filename or "proof.pdf",
-            "status": "uploaded_but_processing_failed",
-            "error": str(e),
-        }
+    threading.Thread(
+        target=process_proof,
+        args=(proof_id,),
+        daemon=True,
+    ).start()
+
+    return {
+        "id": proof_id,
+        "file_name": file.filename or "proof.pdf",
+        "status": "queued",
+    }

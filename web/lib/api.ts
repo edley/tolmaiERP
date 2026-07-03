@@ -46,3 +46,13 @@ export async function syncProofToErp(proofId: string) {
   if (!res.ok) throw new Error("Sync failed");
   return res.json();
 }
+
+export async function updateReceipt(receiptId: string, data: Record<string, any>) {
+  const res = await fetch(`${API_URL}/api/receipts/${receiptId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) throw new Error("Update failed");
+  return res.json();
+}

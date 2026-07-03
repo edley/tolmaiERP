@@ -1,0 +1,8 @@
+ALTER TABLE proof_of_payment_receipt
+  ADD COLUMN IF NOT EXISTS purchase_currency TEXT,
+  ADD COLUMN IF NOT EXISTS transaction_currency TEXT,
+  ADD COLUMN IF NOT EXISTS transaction_amount DOUBLE PRECISION,
+  ADD COLUMN IF NOT EXISTS card_number TEXT,
+  ADD COLUMN IF NOT EXISTS card_type TEXT,
+  ADD COLUMN IF NOT EXISTS payee TEXT,
+  ADD COLUMN IF NOT EXISTS address TEXT;

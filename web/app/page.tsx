@@ -1,18 +1,30 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { supabase } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
-import { Upload, FileText, Receipt, LogOut, Eye, RefreshCw, ExternalLink, DollarSign, User, Hash, Calendar, Building2, CheckCircle, AlertCircle, UploadCloud } from "lucide-react";
-import Link from "next/link";
+import { uploadProof, updateReceipt } from "@/lib/api";
+import {
+  Upload, FileText, Receipt, LogOut, RefreshCw, DollarSign, User, Hash, Calendar,
+  Building2, CheckCircle, AlertCircle, UploadCloud, Edit3, Shield, AlertTriangle,
+  ChevronDown, ChevronRight, Save, X, Loader2, Search, ExternalLink, BarChart3
+} from "lucide-react";
 
+const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 const TABS = ["Dashboard", "Proofs", "Receipts"] as const;
 type Tab = typeof TABS[number];
+
+const STEP_LABELS: Record<string, string> = {
+  uploaded: "Uploading", ocr: "Extracting text", llm_primary: "AI extraction",
+  llm_fallback: "AI fallback", regex: "Regex extraction", routing: "Saving result", done: "Complete",
+};
 
 export default function HomePage() {
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<Tab>("Dashboard");
+  const [filterState, setFilterState] = useState<string>("");
+  const [tabKey, setTabKey] = useState(0);
   const router = useRouter();
 
   useEffect(() => {
@@ -28,33 +40,28 @@ export default function HomePage() {
     router.push("/login");
   }
 
-  if (loading) return <div className="flex min-h-screen items-center justify-center">Loading...</div>;
+  if (loading) return <div className="flex min-h-screen items-center justify-center text-sm text-gray-500">Loading...</div>;
   if (!user) return null;
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <header className="border-b bg-white px-6 py-3 flex items-center justify-between sticky top-0 z-10">
-        <h1 className="text-lg font-semibold">tolmaiERP</h1>
+      <header className="border-b bg-white px-6 py-3 flex items-center justify-between sticky top-0 z-10 shadow-sm">
+        <h1 className="text-lg font-semibold tracking-tight">tolmaiERP</h1>
         <div className="flex items-center gap-3">
           <span className="text-xs text-gray-500">{user.email}</span>
-          <button onClick={handleLogout} className="flex items-center gap-1 text-xs text-gray-500 hover:text-red-600">
+          <button onClick={handleLogout} className="flex items-center gap-1 text-xs text-gray-500 hover:text-red-600 transition-colors">
             <LogOut size={14} /> Sign Out
           </button>
         </div>
       </header>
 
-      <div className="border-b bg-white px-6 flex">
+      <div className="border-b bg-white px-6 flex sticky top-[49px] z-10">
         {TABS.map((t) => (
-          <button
-            key={t}
-            onClick={() => setTab(t)}
+          <button key={t} onClick={() => setTab(t)}
             className={`px-5 py-3 text-sm font-medium border-b-2 transition-colors ${
-              tab === t
-                ? "border-blue-600 text-blue-600"
-                : "border-transparent text-gray-500 hover:text-gray-700"
-            }`}
-          >
-            {t === "Dashboard" && <Upload size={14} className="inline mr-1.5" />}
+              tab === t ? "border-blue-600 text-blue-600" : "border-transparent text-gray-500 hover:text-gray-700"
+            }`}>
+            {t === "Dashboard" && <BarChart3 size={14} className="inline mr-1.5" />}
             {t === "Proofs" && <FileText size={14} className="inline mr-1.5" />}
             {t === "Receipts" && <Receipt size={14} className="inline mr-1.5" />}
             {t}
@@ -63,165 +70,654 @@ export default function HomePage() {
       </div>
 
       <main className="mx-auto max-w-6xl px-6 py-6">
-        {tab === "Dashboard" && <DashboardTab user={user} />}
-        {tab === "Proofs" && <ProofsTab />}
-        {tab === "Receipts" && <ReceiptsTab />}
+        {tab === "Dashboard" && <DashboardTab user={user} onNavigate={(t: Tab, f?: string) => { setFilterState(f || ""); setTabKey(k => k + 1); setTab(t); }} />}
+        {tab === "Proofs" && <ProofsTab key={`p-${tabKey}`} initialFilter={filterState} />}
+        {tab === "Receipts" && <ReceiptsTab key={`r-${tabKey}`} initialFilter={filterState} />}
       </main>
     </div>
   );
 }
 
-function DashboardTab({ user }: { user: any }) {
+/* ========== DASHBOARD TAB ========== */
+function DashboardTab({ user, onNavigate }: { user: any; onNavigate: (tab: Tab, filter?: string) => void }) {
+  const [stats, setStats] = useState({ proofs: 0, receipts: 0, review: 0, ready: 0 });
+  const [docTypeStats, setDocTypeStats] = useState<Record<string, number>>({});
+  const [files, setFiles] = useState<File[]>([]);
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState("");
+  const [proofId, setProofId] = useState<string | null>(null);
+  const [progress, setProgress] = useState(0);
+  const [currentStep, setCurrentStep] = useState("");
+  const [dragOver, setDragOver] = useState(false);
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [uploadResults, setUploadResults] = useState<{name: string; status: string}[]>([]);
+  const [uploadIndex, setUploadIndex] = useState(0);
+  const pollRef = useRef<any>(null);
+
+  useEffect(() => {
+    loadStats();
+    return () => { if (pollRef.current) clearInterval(pollRef.current); };
+  }, [dateFrom, dateTo]);
+
+  function dateParams() {
+    const p = new URLSearchParams({ page: "1", page_size: "1" });
+    if (dateFrom) p.set("date_from", dateFrom);
+    if (dateTo) p.set("date_to", dateTo);
+    return p.toString();
+  }
+
+  async function loadStats() {
+    try {
+      const [pr, rr, rv, rd, ...dtRes] = await Promise.all([
+        fetch(`${API}/api/proofs?${dateParams()}`).then(r => r.json()),
+        fetch(`${API}/api/receipts?${dateParams()}`).then(r => r.json()),
+        fetch(`${API}/api/receipts?status=review_needed&${dateParams()}`).then(r => r.json()),
+        fetch(`${API}/api/proofs?status=ready_to_process&${dateParams()}`).then(r => r.json()),
+        ...["receipt","invoice","payment_proof","id","passport","driving_license","birth_certificate","other","unclassified"].map(
+          dt => fetch(`${API}/api/proofs?document_type=${dt}&${dateParams()}`).then(r => r.json())
+        ),
+      ]);
+      setStats({ proofs: pr.total || 0, receipts: rr.total || 0, review: rv.total || 0, ready: rd.total || 0 });
+      const dtLabels = ["receipt","invoice","payment_proof","id","passport","driving_license","birth_certificate","other","unclassified"];
+      const dtMap: Record<string, number> = {};
+      dtRes.forEach((d, i) => { if (d.total > 0) dtMap[dtLabels[i]] = d.total; });
+      setDocTypeStats(dtMap);
+    } catch (_) {}
+  }
+
+  function startPolling(id: string) {
+    setProofId(id);
+    setCurrentStep("uploaded");
+    setProgress(10);
+    pollRef.current = setInterval(async () => {
+      try {
+        const [logsRes, proofRes] = await Promise.all([
+          fetch(`${API}/api/logs?proof_id=${id}&page=1&page_size=5`),
+          fetch(`${API}/api/proofs/${id}`),
+        ]);
+        if (!logsRes.ok || !proofRes.ok) return;
+        const logs = (await logsRes.json()).items || [];
+        const proof = await proofRes.json();
+        const stages = logs.map((l: any) => l.stage);
+        let step = "uploaded";
+        if (stages.includes("ocr")) step = "ocr";
+        if (stages.includes("llm_primary") || stages.includes("llm_fallback") || stages.includes("regex")) step = "llm_primary";
+        if (stages.includes("routing")) step = "routing";
+        setCurrentStep(step);
+        setProgress(step === "routing" ? 85 : step === "llm_primary" ? 60 : step === "ocr" ? 30 : 10);
+        if (["completed", "review_needed", "failed", "ready_to_process"].includes(proof.status)) {
+          clearInterval(pollRef.current!);
+          setProgress(100);
+          setCurrentStep("done");
+          setUploading(false);
+          setFiles([]);
+          loadStats();
+        }
+      } catch (_) {}
+    }, 2000);
+  }
+
+  async function handleUpload() {
+    if (!files.length) return;
+    setUploading(true);
+    setError("");
+    setUploadResults([]);
+    setUploadIndex(0);
+    for (let i = 0; i < files.length; i++) {
+      const f = files[i];
+      setUploadIndex(i);
+      setUploadResults(prev => [...prev, { name: f.name, status: "uploading" }]);
+      setProgress(5);
+      setCurrentStep("uploaded");
+      try {
+        const res = await uploadProof(f, user.id);
+        await new Promise<void>((resolve) => {
+          const pid = res.id;
+          const interval = setInterval(async () => {
+            try {
+              const proofRes = await fetch(`${API}/api/proofs/${pid}`);
+              const proof = await proofRes.json();
+              if (["completed", "review_needed", "failed", "ready_to_process"].includes(proof.status)) {
+                clearInterval(interval);
+                setUploadResults(prev => prev.map((r, idx) => idx === i ? { ...r, status: proof.status === "failed" ? "failed" : "done" } : r));
+                setProgress(100);
+                setCurrentStep("done");
+                resolve();
+              }
+            } catch (_) {}
+          }, 2000);
+        });
+      } catch (err: any) {
+        setUploadResults(prev => prev.map((r, idx) => idx === i ? { ...r, status: "failed" } : r));
+        setError(err.message);
+      }
+    }
+    setFiles([]);
+    setUploading(false);
+    setProofId(null);
+    loadStats();
+  }
+
   return (
     <div className="space-y-6">
       <h2 className="text-xl font-bold">Dashboard</h2>
-      <div className="grid gap-5 sm:grid-cols-3">
-        <Link href="/upload" className="flex items-center gap-4 rounded-lg border bg-white p-6 shadow-sm hover:shadow-md transition-shadow">
-          <UploadCloud size={36} className="text-blue-600" />
-          <div>
-            <div className="text-lg font-medium">Upload Proof</div>
-            <div className="text-sm text-gray-500">Upload a payment PDF</div>
-          </div>
-        </Link>
-        <div className="flex items-center gap-4 rounded-lg border bg-white p-6 shadow-sm">
-          <Eye size={36} className="text-green-600" />
-          <div>
-            <div className="text-lg font-medium">View Proofs</div>
-            <div className="text-sm text-gray-500">Go to Proofs tab</div>
+      <div className="grid gap-4 sm:grid-cols-4">
+        {[
+          { label: "Total Proofs", value: stats.proofs, icon: FileText, color: "text-blue-600 bg-blue-50", tab: "Proofs" as Tab, filter: "" },
+          { label: "Total Receipts", value: stats.receipts, icon: Receipt, color: "text-purple-600 bg-purple-50", tab: "Receipts" as Tab, filter: "" },
+          { label: "Needs Review", value: stats.review, icon: AlertTriangle, color: "text-orange-600 bg-orange-50", tab: "Receipts" as Tab, filter: "review_needed" },
+          { label: "Ready to Process", value: stats.ready, icon: CheckCircle, color: "text-green-600 bg-green-50", tab: "Proofs" as Tab, filter: "ready_to_process" },
+        ].map((s) => (
+          <button key={s.label} onClick={() => onNavigate(s.tab, s.filter)}
+            className="rounded-xl border bg-white p-5 shadow-sm flex items-center gap-4 cursor-pointer hover:shadow-md hover:-translate-y-0.5 transition-all text-left">
+            <div className={`rounded-lg p-3 ${s.color}`}><s.icon size={24} /></div>
+            <div><div className="text-2xl font-bold">{s.value}</div><div className="text-xs text-gray-500">{s.label}</div></div>
+          </button>
+        ))}
+      </div>
+
+      <div className="flex items-center gap-3">
+        <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
+          className="rounded-lg border border-gray-300 px-3 py-1.5 text-xs focus:border-blue-500 focus:outline-none" title="From date" />
+        <span className="text-xs text-gray-400">—</span>
+        <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)}
+          className="rounded-lg border border-gray-300 px-3 py-1.5 text-xs focus:border-blue-500 focus:outline-none" title="To date" />
+        {(dateFrom || dateTo) && (
+          <button onClick={() => { setDateFrom(""); setDateTo(""); }}
+            className="text-xs text-gray-500 hover:text-red-600 px-2 py-1.5 border rounded-lg">Clear</button>
+        )}
+      </div>
+
+      {Object.keys(docTypeStats).length > 0 && (
+        <div className="rounded-xl border bg-white p-5 shadow-sm">
+          <h3 className="text-sm font-semibold text-gray-700 mb-3">Document Types</h3>
+          <div className="flex flex-wrap gap-2">
+            {Object.entries(docTypeStats).map(([dt, count]) => (
+              <button key={dt} onClick={() => onNavigate("Proofs", dt)}
+                className={`rounded-full px-3 py-1 text-xs font-medium cursor-pointer hover:shadow-sm transition-all ${
+                  ["receipt","invoice","payment_proof"].includes(dt)
+                    ? "bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100"
+                    : "bg-gray-50 text-gray-600 border border-gray-200 hover:bg-gray-100"
+                }`}>
+                {dt.replace(/_/g, " ")}: {count}
+              </button>
+            ))}
           </div>
         </div>
-        <div className="flex items-center gap-4 rounded-lg border bg-white p-6 shadow-sm">
-          <Receipt size={36} className="text-purple-600" />
-          <div>
-            <div className="text-lg font-medium">View Receipts</div>
-            <div className="text-sm text-gray-500">Go to Receipts tab</div>
+      )}
+
+      <div className="rounded-xl border bg-white p-6 shadow-sm">
+        <h3 className="text-sm font-semibold text-gray-700 mb-4 flex items-center gap-2"><UploadCloud size={16} /> Upload Payment Proof</h3>
+        {proofId && currentStep !== "done" ? (
+          <div className="space-y-3">
+            <div className="flex items-center gap-3"><Loader2 size={20} className="animate-spin text-blue-600" /><span className="text-sm text-gray-600">{STEP_LABELS[currentStep] || "Processing..."}</span></div>
+            <div className="w-full bg-gray-200 rounded-full h-2"><div className="bg-blue-600 h-2 rounded-full transition-all duration-500 ease-out" style={{ width: `${progress}%` }} /></div>
           </div>
-        </div>
+        ) : (
+          <div className="space-y-4">
+            <div onDrop={(e) => { e.preventDefault(); setDragOver(false); setFiles(Array.from(e.dataTransfer.files).filter(f => f.type === "application/pdf")); if (Array.from(e.dataTransfer.files).some(f => f.type !== "application/pdf")) setError("Non-PDF files ignored"); }}
+              onDragOver={(e) => { e.preventDefault(); setDragOver(true); }} onDragLeave={() => setDragOver(false)}
+              className={`rounded-lg border-2 border-dashed p-8 text-center cursor-pointer transition-colors ${dragOver ? "border-blue-500 bg-blue-50" : "border-gray-300 hover:border-blue-400"}`}>
+              <Upload size={32} className="mx-auto text-gray-400 mb-3" />
+              <p className="text-sm text-gray-600 mb-1">Drag & drop PDFs here</p>
+              <p className="text-xs text-gray-400 mb-3">or</p>
+              <label className="inline-block cursor-pointer rounded bg-blue-600 px-4 py-2 text-sm text-white hover:bg-blue-700">
+                Browse Files
+                <input type="file" accept=".pdf" multiple className="hidden" onChange={(e) => setFiles(Array.from(e.target.files || []))} />
+              </label>
+              {files.length > 0 && (
+                <div className="mt-3 space-y-1">
+                  {files.map((f, i) => (
+                    <p key={i} className="text-sm text-gray-700">{f.name} ({(f.size / 1024).toFixed(1)} KB)</p>
+                  ))}
+                </div>
+              )}
+            </div>
+            {uploadResults.length > 0 && (
+              <div className="space-y-1.5">
+                {uploadResults.map((r, i) => (
+                  <div key={i} className={`flex items-center gap-2 text-sm rounded-lg px-3 py-2 ${
+                    r.status === "done" ? "bg-green-50 text-green-700" :
+                    r.status === "failed" ? "bg-red-50 text-red-600" :
+                    r.status === "uploading" && i === uploadIndex ? "bg-blue-50 text-blue-700" :
+                    "bg-gray-50 text-gray-500"
+                  }`}>
+                    {r.status === "done" ? <CheckCircle size={14} /> : r.status === "failed" ? <AlertCircle size={14} /> : <Loader2 size={14} className="animate-spin" />}
+                    {r.name}
+                  </div>
+                ))}
+              </div>
+            )}
+            {error && <div className="flex items-center gap-2 rounded bg-red-50 p-3 text-sm text-red-600"><AlertCircle size={16} /> {error}</div>}
+            {uploading && (
+              <div className="flex items-center gap-3"><Loader2 size={20} className="animate-spin text-blue-600" /><span className="text-sm text-gray-600">Processing {uploadIndex + 1} of {files.length}...</span></div>
+            )}
+            <button onClick={handleUpload} disabled={!files.length || uploading}
+              className="w-full rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50 transition-colors">
+              {uploading ? `Uploading ${uploadIndex + 1}/${files.length}...` : files.length > 0 ? `Upload ${files.length} PDF${files.length > 1 ? "s" : ""}` : "Upload & Process"}
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
 }
 
-function ProofsTab() {
+/* ========== PROOFS TAB ========== */
+function ProofsTab({ initialFilter = "" }: { initialFilter?: string }) {
   const [proofs, setProofs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [statusFilter, setStatusFilter] = useState("");
+  const [filter, setFilter] = useState(initialFilter);
+  const [docTypeFilter, setDocTypeFilter] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [receipts, setReceipts] = useState<Record<string, any>>({});
+  const [editing, setEditing] = useState<string | null>(null);
+  const [form, setForm] = useState<any>({});
+  const [saving, setSaving] = useState(false);
 
-  useEffect(() => { loadProofs(); }, [statusFilter]);
+  useEffect(() => { loadProofs(); }, [filter, docTypeFilter, dateFrom, dateTo]);
 
   async function loadProofs() {
     setLoading(true);
     try {
-      const params = new URLSearchParams({ page: "1" });
-      if (statusFilter) params.set("status", statusFilter);
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/api/proofs?${params}`);
-      const data = await res.json();
-      setProofs(data.items || []);
+      const p = new URLSearchParams({ page: "1", page_size: "50" });
+      if (filter) p.set("status", filter);
+      if (docTypeFilter) p.set("document_type", docTypeFilter);
+      if (dateFrom) p.set("date_from", dateFrom);
+      if (dateTo) p.set("date_to", dateTo);
+      const res = await fetch(`${API}/api/proofs?${p}`);
+      const d = await res.json();
+      setProofs(d.items || []);
     } catch (e) { console.error(e); } finally { setLoading(false); }
+  }
+
+  async function toggleExpand(proofId: string) {
+    if (expandedId === proofId) { setExpandedId(null); return; }
+    setExpandedId(proofId);
+    if (!receipts[proofId]) {
+      try {
+        const res = await fetch(`${API}/api/receipts?page=1&page_size=50`);
+        const d = await res.json();
+        const match = (d.items || []).find((r: any) => r.proof_id === proofId);
+        if (match) {
+          setReceipts(prev => ({ ...prev, [proofId]: match }));
+          setForm({
+            amount: match.amount ?? "", currency: match.currency ?? "USD",
+            payer_name: match.payer_name ?? "", bank_issuer: match.bank_issuer ?? "",
+            receipt_number: match.receipt_number ?? "", payment_date: match.payment_date ?? "",
+            description: match.description ?? "",
+            purchase_currency: match.purchase_currency ?? "",
+            transaction_currency: match.transaction_currency ?? "",
+            transaction_amount: match.transaction_amount ?? "",
+            card_number: match.card_number ?? "", card_type: match.card_type ?? "",
+            payee: match.payee ?? "", address: match.address ?? "",
+          });
+        }
+      } catch (_) {}
+    }
+  }
+
+  async function handleSave(receiptId: string, proofId: string) {
+    setSaving(true);
+    try {
+      const updated = await updateReceipt(receiptId, { ...form, status: "reviewed" });
+      setReceipts(prev => ({ ...prev, [proofId]: updated }));
+      setEditing(null);
+      loadProofs();
+    } catch (e: any) { alert(e.message); } finally { setSaving(false); }
   }
 
   const statusColors: Record<string, string> = {
     pending: "bg-yellow-100 text-yellow-800", processing: "bg-blue-100 text-blue-800",
-    completed: "bg-green-100 text-green-800", failed: "bg-red-100 text-red-800",
+    completed: "bg-green-100 text-green-800", review_needed: "bg-orange-100 text-orange-800",
+    failed: "bg-red-100 text-red-800", ready_to_process: "bg-emerald-100 text-emerald-800",
   };
 
   return (
     <div>
       <div className="flex items-center justify-between mb-4">
-        <h2 className="text-xl font-bold">Proofs</h2>
-        <button onClick={loadProofs} className="flex items-center gap-1 text-sm text-gray-500 hover:text-blue-600"><RefreshCw size={14} /> Refresh</button>
+        <h2 className="text-xl font-bold">Proofs & Receipts</h2>
+        <button onClick={loadProofs} className="text-sm text-gray-500 hover:text-blue-600"><RefreshCw size={14} className="inline mr-1" /> Refresh</button>
       </div>
-      <div className="mb-4 flex gap-2 flex-wrap">
-        {["", "pending", "completed", "failed"].map((s) => (
-          <button key={s} onClick={() => setStatusFilter(s)}
-            className={`rounded-full px-3 py-1 text-xs ${statusFilter === s ? "bg-blue-600 text-white" : "bg-white border text-gray-600 hover:bg-gray-50"}`}>
-            {s || "All"}
+      <div className="mb-4 flex gap-2 flex-wrap items-center">
+        {["", "pending", "completed", "review_needed", "ready_to_process", "failed"].map((s) => (
+          <button key={s} onClick={() => setFilter(s)}
+            className={`rounded-full px-3 py-1 text-xs ${filter === s ? "bg-blue-600 text-white" : "bg-white border text-gray-600 hover:bg-gray-50"}`}>
+            {s ? s.replace(/_/g, " ") : "All"}
           </button>
         ))}
       </div>
-      {loading ? <div className="text-center py-8 text-gray-500 text-sm">Loading...</div>
-      : proofs.length === 0 ? <div className="text-center py-8 text-gray-500 text-sm">No proofs found.</div>
-      : <div className="overflow-hidden rounded-lg border bg-white shadow-sm">
-          <table className="w-full text-sm">
-            <thead className="bg-gray-50 border-b">
-              <tr><th className="px-3 py-2 text-left font-medium text-gray-600">File</th><th className="px-3 py-2 text-left font-medium text-gray-600">Status</th><th className="px-3 py-2 text-left font-medium text-gray-600">ERP</th><th className="px-3 py-2 text-left font-medium text-gray-600">Date</th><th className="px-3 py-2"></th></tr>
-            </thead>
-            <tbody className="divide-y">
-              {proofs.map((p) => (
-                <tr key={p.id} className="hover:bg-gray-50">
-                  <td className="px-3 py-2 font-medium">{p.file_name}</td>
-                  <td className="px-3 py-2"><span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${statusColors[p.status] || ""}`}>{p.status}</span></td>
-                  <td className="px-3 py-2"><span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${p.erp_status === "synced" ? "bg-green-100 text-green-800" : p.erp_status === "failed" ? "bg-red-100 text-red-800" : "bg-gray-100 text-gray-600"}`}>{p.erp_status}</span></td>
-                  <td className="px-3 py-2 text-gray-500 text-xs">{p.created_at ? new Date(p.created_at).toLocaleString() : "-"}</td>
-                  <td className="px-3 py-2"><Link href={`/proofs/${p.id}`} className="text-blue-600 hover:text-blue-800"><ExternalLink size={14} /></Link></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      <div className="mb-4 flex gap-2 flex-wrap items-center">
+        <select value={docTypeFilter} onChange={e => setDocTypeFilter(e.target.value)}
+          className="rounded-lg border border-gray-300 px-2.5 py-1.5 text-xs focus:border-blue-500 focus:outline-none bg-white">
+          <option value="">All Types</option>
+          <option value="receipt">Receipt</option>
+          <option value="invoice">Invoice</option>
+          <option value="payment_proof">Payment Proof</option>
+          <option value="id">ID</option>
+          <option value="passport">Passport</option>
+          <option value="driving_license">Driving License</option>
+          <option value="birth_certificate">Birth Certificate</option>
+          <option value="other">Other</option>
+          <option value="unclassified">Unclassified</option>
+        </select>
+        <div className="ml-auto flex items-center gap-2">
+          <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
+            className="rounded-lg border border-gray-300 px-2 py-1.5 text-xs focus:border-blue-500 focus:outline-none" title="From date" />
+          <span className="text-xs text-gray-400">—</span>
+          <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)}
+            className="rounded-lg border border-gray-300 px-2 py-1.5 text-xs focus:border-blue-500 focus:outline-none" title="To date" />
+          {(dateFrom || dateTo) && (
+            <button onClick={() => { setDateFrom(""); setDateTo(""); }}
+              className="text-xs text-gray-500 hover:text-red-600 px-2 py-1.5">Clear</button>
+          )}
+        </div>
+      </div>
+      {loading ? <div className="text-center py-8 text-sm text-gray-500">Loading...</div>
+      : proofs.length === 0 ? <div className="text-center py-8 text-sm text-gray-500">No proofs found.</div>
+      : <div className="space-y-2">
+          {proofs.map((p) => {
+            const isOpen = expandedId === p.id;
+            const receipt = receipts[p.id];
+            return (
+              <div key={p.id} className={`rounded-xl border bg-white shadow-sm overflow-hidden ${isOpen ? "ring-1 ring-blue-200" : ""}`}>
+                <button onClick={() => toggleExpand(p.id)} className="w-full flex items-center gap-3 px-5 py-3.5 hover:bg-gray-50 text-left transition-colors">
+                  <div className="shrink-0 text-gray-400">{isOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}</div>
+                  <div className="flex-1 min-w-0">
+                    <div className="font-medium text-sm truncate">{p.file_name}</div>
+                    <div className="flex items-center gap-2 text-xs text-gray-400 mt-0.5">
+                      <span>{p.created_at ? new Date(p.created_at).toLocaleString() : ""}</span>
+                      {p.processing_method && <span>· {p.processing_method.replace(/_/g, " ")}</span>}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                      ["receipt","invoice","payment_proof"].includes(p.document_type)
+                        ? "bg-blue-100 text-blue-800"
+                        : p.document_type && p.document_type !== "unclassified"
+                        ? "bg-gray-100 text-gray-600"
+                        : "bg-gray-50 text-gray-400"
+                    }`}>
+                      {p.document_type ? p.document_type.replace(/_/g, " ") : "unclassified"}
+                    </span>
+                    <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${statusColors[p.status] || "bg-gray-100 text-gray-600"}`}>
+                      {p.status?.replace(/_/g, " ")}
+                    </span>
+                    <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${p.erp_status === "synced" ? "bg-green-100 text-green-800" : "bg-gray-100 text-gray-600"}`}>
+                      {p.erp_status}
+                    </span>
+                  </div>
+                </button>
+                {isOpen && (
+                  <div className="border-t bg-gray-50 px-5 py-4">
+                    {receipt ? (
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between">
+                          <h4 className="text-sm font-semibold text-gray-700 flex items-center gap-1.5"><Receipt size={14} /> Receipt</h4>
+                          {receipt.status === "review_needed" && editing !== receipt.id && (
+                            <button onClick={() => { setEditing(receipt.id); setForm({
+                              amount: receipt.amount ?? "", currency: receipt.currency ?? "USD",
+                              payer_name: receipt.payer_name ?? "", bank_issuer: receipt.bank_issuer ?? "",
+                              receipt_number: receipt.receipt_number ?? "", payment_date: receipt.payment_date ?? "",
+                              description: receipt.description ?? "",
+                              purchase_currency: receipt.purchase_currency ?? "",
+                              transaction_currency: receipt.transaction_currency ?? "",
+                              card_number: receipt.card_number ?? "", card_type: receipt.card_type ?? "",
+                              payee: receipt.payee ?? "", address: receipt.address ?? "",
+                            }); }} className="flex items-center gap-1 text-xs text-orange-600 hover:text-orange-700 bg-orange-50 px-2.5 py-1 rounded-lg border border-orange-200">
+                              <Edit3 size={12} /> Review & Edit
+                            </button>
+                          )}
+                          {receipt.status === "reviewed" && <span className="text-xs text-green-600 font-medium flex items-center gap-1"><CheckCircle size={12} /> Reviewed</span>}
+                        </div>
+
+                        {editing === receipt.id ? (
+                          <div className="grid grid-cols-2 gap-3">
+                            {[
+                              { label: "Amount", key: "amount" },
+                              { label: "Currency", key: "currency" },
+                              { label: "Payer Name", key: "payer_name" },
+                              { label: "Bank Issuer", key: "bank_issuer" },
+                              { label: "Receipt #", key: "receipt_number" },
+                              { label: "Payment Date", key: "payment_date" },
+                              { label: "Description", key: "description" },
+                              { label: "Purchase Currency", key: "purchase_currency" },
+                              { label: "Transaction Currency", key: "transaction_currency" },
+                              { label: "Transaction Amount", key: "transaction_amount" },
+                              { label: "Card Number", key: "card_number" },
+                              { label: "Card Type", key: "card_type" },
+                              { label: "Payee", key: "payee" },
+                              { label: "Address", key: "address" },
+                            ].map((f) => (
+                              <div key={f.key}>
+                                <label className="block text-xs text-gray-500 mb-0.5">{f.label}</label>
+                                <input type="text" value={form[f.key] ?? ""} onChange={(e) => setForm({ ...form, [f.key]: e.target.value })}
+                                  className="w-full rounded-lg border border-gray-300 px-2.5 py-1.5 text-xs focus:border-blue-500 focus:outline-none" />
+                              </div>
+                            ))}
+                            <div className="col-span-2 flex gap-2 pt-1">
+                              <button onClick={() => setEditing(null)} className="text-xs text-gray-500 px-3 py-1.5 border rounded-lg hover:bg-gray-50">Cancel</button>
+                              <button onClick={() => handleSave(receipt.id, p.id)} disabled={saving}
+                                className="flex items-center gap-1 text-xs text-white bg-blue-600 px-3 py-1.5 rounded-lg hover:bg-blue-700 disabled:opacity-50">
+                                {saving ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}
+                                {saving ? "Saving..." : "Save & Mark Reviewed"}
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="flex flex-wrap gap-x-6 gap-y-2 text-sm">
+                            {receipt.amount != null && <span className="flex items-center gap-1 font-semibold"><DollarSign size={14} className="text-green-600" /> {Number(receipt.amount).toFixed(2)} {receipt.currency}</span>}
+                            {receipt.payer_name && <span className="flex items-center gap-1 text-gray-600"><User size={13} /> {receipt.payer_name}</span>}
+                            {receipt.bank_issuer && <span className="flex items-center gap-1 text-gray-600"><Building2 size={13} /> {receipt.bank_issuer}</span>}
+                            {receipt.receipt_number && <span className="flex items-center gap-1 text-gray-600"><Hash size={13} /> {receipt.receipt_number}</span>}
+                            {receipt.payment_date && <span className="flex items-center gap-1 text-gray-600"><Calendar size={13} /> {receipt.payment_date}</span>}
+                            {receipt.description && <span className="flex items-center gap-1 text-gray-600 truncate max-w-[200px]"><FileText size={13} /> {receipt.description}</span>}
+                            {receipt.purchase_currency && <span className="flex items-center gap-1 text-gray-600"><DollarSign size={13} /> Purchase: {receipt.purchase_currency}</span>}
+                            {receipt.transaction_currency && <span className="flex items-center gap-1 text-gray-600"><DollarSign size={13} /> Txn: {receipt.transaction_currency}</span>}
+                            {receipt.transaction_amount != null && <span className="flex items-center gap-1 text-gray-600"><DollarSign size={13} /> Txn Amt: {Number(receipt.transaction_amount).toFixed(2)}</span>}
+                            {receipt.card_number && <span className="flex items-center gap-1 text-gray-600"><Building2 size={13} /> {receipt.card_number}</span>}
+                            {receipt.card_type && <span className="flex items-center gap-1 text-gray-600"><Building2 size={13} /> {receipt.card_type}</span>}
+                            {receipt.payee && <span className="flex items-center gap-1 text-gray-600"><User size={13} /> Payee: {receipt.payee}</span>}
+                            {receipt.address && <span className="flex items-center gap-1 text-gray-600 truncate max-w-[200px]" title={receipt.address}><FileText size={13} /> {receipt.address}</span>}
+                            {receipt.confidence_score != null && (
+                              <span className={`flex items-center gap-1 text-xs font-medium ${receipt.confidence_score >= 0.85 ? "text-green-600" : receipt.confidence_score >= 0.5 ? "text-yellow-600" : "text-red-600"}`}>
+                                <Shield size={12} /> {Math.round(receipt.confidence_score * 100)}%
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="text-center py-6 text-sm text-gray-400">
+                        <FileText size={24} className="mx-auto mb-2 opacity-50" />
+                        <p>No receipt extracted yet</p>
+                        <p className="text-xs">The PDF may still be processing or extraction failed</p>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       }
     </div>
   );
 }
 
-function ReceiptsTab() {
+/* ========== RECEIPTS TAB ========== */
+function ReceiptsTab({ initialFilter = "" }: { initialFilter?: string }) {
   const [receipts, setReceipts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [statusFilter, setStatusFilter] = useState("");
+  const [filter, setFilter] = useState(initialFilter);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [form, setForm] = useState<any>({});
+  const [saving, setSaving] = useState(false);
+  const [search, setSearch] = useState("");
 
-  useEffect(() => { loadReceipts(); }, [statusFilter]);
+  useEffect(() => { loadReceipts(); }, [filter]);
 
   async function loadReceipts() {
     setLoading(true);
     try {
-      const params = new URLSearchParams({ page: "1" });
-      if (statusFilter) params.set("status", statusFilter);
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/api/receipts?${params}`);
-      const data = await res.json();
-      setReceipts(data.items || []);
+      const p = new URLSearchParams({ page: "1", page_size: "50" });
+      if (filter) p.set("status", filter);
+      const res = await fetch(`${API}/api/receipts?${p}`);
+      const d = await res.json();
+      setReceipts(d.items || []);
     } catch (e) { console.error(e); } finally { setLoading(false); }
   }
+
+  function startEdit(r: any) {
+    setEditingId(r.id);
+    setForm({
+      amount: r.amount ?? "", currency: r.currency ?? "USD",
+      payer_name: r.payer_name ?? "", bank_issuer: r.bank_issuer ?? "",
+      receipt_number: r.receipt_number ?? "", payment_date: r.payment_date ?? "",
+      description: r.description ?? "",
+      purchase_currency: r.purchase_currency ?? "",
+      transaction_currency: r.transaction_currency ?? "",
+      card_number: r.card_number ?? "", card_type: r.card_type ?? "",
+      payee: r.payee ?? "", address: r.address ?? "",
+    });
+  }
+
+  async function handleSave(receiptId: string, origReceipt: any) {
+    setSaving(true);
+    try {
+      const needsReview = origReceipt.status === "review_needed";
+      const payload = needsReview ? { ...form, status: "reviewed" } : form;
+      const updated = await updateReceipt(receiptId, payload);
+      setReceipts(prev => prev.map(r => r.id === receiptId ? updated : r));
+      setEditingId(null);
+    } catch (e: any) { alert(e.message); } finally { setSaving(false); }
+  }
+
+  const filtered = search ? receipts.filter(r =>
+    Object.values(r).some(v => String(v ?? "").toLowerCase().includes(search.toLowerCase()))
+  ) : receipts;
 
   return (
     <div>
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-xl font-bold">Receipts</h2>
-        <button onClick={loadReceipts} className="flex items-center gap-1 text-sm text-gray-500 hover:text-blue-600"><RefreshCw size={14} /> Refresh</button>
+        <button onClick={loadReceipts} className="text-sm text-gray-500 hover:text-blue-600"><RefreshCw size={14} className="inline mr-1" /> Refresh</button>
       </div>
-      <div className="mb-4 flex gap-2 flex-wrap">
-        {["", "extracted", "synced", "failed"].map((s) => (
-          <button key={s} onClick={() => setStatusFilter(s)}
-            className={`rounded-full px-3 py-1 text-xs ${statusFilter === s ? "bg-blue-600 text-white" : "bg-white border text-gray-600 hover:bg-gray-50"}`}>
-            {s || "All"}
+      <div className="mb-4 flex gap-2 flex-wrap items-center">
+        {["", "extracted", "review_needed", "reviewed", "synced", "failed"].map((s) => (
+          <button key={s} onClick={() => { setFilter(s); setEditingId(null); }}
+            className={`rounded-full px-3 py-1 text-xs ${filter === s ? "bg-blue-600 text-white" : "bg-white border text-gray-600 hover:bg-gray-50"}`}>
+            {s ? s.replace(/_/g, " ") : "All"}
           </button>
         ))}
+        <div className="relative ml-auto">
+          <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
+          <input type="text" placeholder="Search..." value={search} onChange={(e) => setSearch(e.target.value)}
+            className="rounded-lg border border-gray-300 pl-7 pr-3 py-1.5 text-xs focus:border-blue-500 focus:outline-none w-40" />
+        </div>
       </div>
-      {loading ? <div className="text-center py-8 text-gray-500 text-sm">Loading...</div>
-      : receipts.length === 0 ? <div className="text-center py-8 text-gray-500 text-sm">No receipts found.</div>
+      {loading ? <div className="text-center py-8 text-sm text-gray-500">Loading...</div>
+      : filtered.length === 0 ? <div className="text-center py-8 text-sm text-gray-500">No receipts found.</div>
       : <div className="space-y-3">
-          {receipts.map((r) => (
-            <div key={r.id} className="rounded-lg border bg-white p-4 shadow-sm hover:shadow-md transition-shadow">
-              <div className="flex items-start justify-between">
-                <div className="space-y-1.5 flex-1 min-w-0">
-                  <div className="flex items-center gap-3 text-xs">
-                    {r.receipt_number && <span className="flex items-center gap-1 text-gray-600"><Hash size={12} /> {r.receipt_number}</span>}
-                    <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${r.status === "extracted" ? "bg-yellow-100 text-yellow-800" : r.status === "synced" ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"}`}>{r.status}</span>
+          {filtered.map((r) => {
+            const isEditing = editingId === r.id;
+            const needsReview = r.status === "review_needed";
+            return (
+              <div key={r.id} className={`rounded-xl border bg-white p-5 shadow-sm transition-all ${needsReview ? "border-orange-300 ring-1 ring-orange-100" : ""}`}>
+                {isEditing ? (
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between mb-2">
+                      <h4 className="text-sm font-semibold text-gray-700">Edit Receipt</h4>
+                      <div className="flex gap-2">
+                        <button onClick={() => setEditingId(null)} className="text-xs text-gray-500 px-3 py-1.5 border rounded-lg hover:bg-gray-50">Cancel</button>
+                        <button onClick={() => handleSave(r.id, r)} disabled={saving}
+                          className="flex items-center gap-1 text-xs text-white bg-blue-600 px-3 py-1.5 rounded-lg hover:bg-blue-700 disabled:opacity-50">
+                          {saving ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}
+                          {saving ? "Saving..." : needsReview ? "Save & Mark Reviewed" : "Save"}
+                        </button>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                      {[
+                        { label: "Amount", key: "amount" }, { label: "Currency", key: "currency" },
+                        { label: "Payer Name", key: "payer_name" }, { label: "Bank Issuer", key: "bank_issuer" },
+                        { label: "Receipt #", key: "receipt_number" }, { label: "Payment Date", key: "payment_date" },
+                        { label: "Description", key: "description", span: true },
+                        { label: "Purchase Currency", key: "purchase_currency" },
+                        { label: "Transaction Currency", key: "transaction_currency" },
+                        { label: "Transaction Amount", key: "transaction_amount" },
+                        { label: "Card Number", key: "card_number" }, { label: "Card Type", key: "card_type" },
+                        { label: "Payee", key: "payee" }, { label: "Address", key: "address" },
+                      ].map((f) => (
+                        <div key={f.key} className={f.span ? "col-span-full" : ""}>
+                          <label className="block text-xs text-gray-500 mb-0.5">{f.label}</label>
+                          <input type="text" value={form[f.key] ?? ""} onChange={(e) => setForm({ ...form, [f.key]: e.target.value })}
+                            className="w-full rounded-lg border border-gray-300 px-2.5 py-1.5 text-sm focus:border-blue-500 focus:outline-none" />
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                  <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
-                    {r.amount && <span className="flex items-center gap-1 font-semibold"><DollarSign size={14} className="text-green-600" /> {r.amount.toFixed(2)} {r.currency}</span>}
-                    {r.payer_name && <span className="flex items-center gap-1 text-gray-600"><User size={13} /> {r.payer_name}</span>}
-                    {r.bank_issuer && <span className="flex items-center gap-1 text-gray-600"><Building2 size={13} /> {r.bank_issuer}</span>}
-                    {r.description && <span className="flex items-center gap-1 text-gray-600 truncate max-w-[200px]"><Receipt size={13} /> {r.description}</span>}
-                    {r.payment_date && <span className="flex items-center gap-1 text-gray-600"><Calendar size={13} /> {r.payment_date}</span>}
+                ) : (
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="space-y-2 flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {r.receipt_number && <span className="flex items-center gap-1 text-xs font-medium text-gray-700 bg-gray-100 rounded-full px-2 py-0.5"><Hash size={11} /> {r.receipt_number}</span>}
+                        {confidenceBadge(r.confidence_score)}
+                        {r.status === "review_needed" && <span className="inline-flex items-center gap-1 text-xs font-medium text-orange-700 bg-orange-50 rounded-full px-2 py-0.5 border border-orange-200"><AlertTriangle size={11} /> Review Needed</span>}
+                        {r.status === "reviewed" && <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-700 bg-emerald-50 rounded-full px-2 py-0.5 border border-emerald-200"><CheckCircle size={11} /> Reviewed</span>}
+                        {r.status === "synced" && <span className="inline-flex items-center gap-1 text-xs font-medium text-green-700 bg-green-50 rounded-full px-2 py-0.5"><CheckCircle size={11} /> Synced</span>}
+                        {r.status === "extracted" && <span className="inline-flex items-center gap-1 text-xs font-medium text-blue-700 bg-blue-50 rounded-full px-2 py-0.5"><Shield size={11} /> Extracted</span>}
+                      </div>
+                      <div className="flex flex-wrap gap-x-5 gap-y-1.5 text-sm">
+                        {r.amount != null && <span className="flex items-center gap-1 font-semibold text-base"><DollarSign size={15} className="text-green-600" /> {Number(r.amount).toFixed(2)} <span className="font-normal text-gray-500">{r.currency}</span></span>}
+                        {r.payer_name && <span className="flex items-center gap-1 text-gray-600"><User size={13} /> {r.payer_name}</span>}
+                        {r.bank_issuer && <span className="flex items-center gap-1 text-gray-600"><Building2 size={13} /> {r.bank_issuer}</span>}
+                        {r.description && <span className="flex items-center gap-1 text-gray-600 truncate max-w-[220px]" title={r.description}><FileText size={13} /> {r.description}</span>}
+                        {r.payment_date && <span className="flex items-center gap-1 text-gray-600"><Calendar size={13} /> {r.payment_date}</span>}
+                        {r.purchase_currency && <span className="flex items-center gap-1 text-gray-600"><DollarSign size={13} /> Purchase: {r.purchase_currency}</span>}
+                        {r.transaction_currency && <span className="flex items-center gap-1 text-gray-600"><DollarSign size={13} /> Txn: {r.transaction_currency}</span>}
+                        {r.transaction_amount != null && <span className="flex items-center gap-1 text-gray-600"><DollarSign size={13} /> Txn Amt: {Number(r.transaction_amount).toFixed(2)}</span>}
+                        {r.card_number && <span className="flex items-center gap-1 text-gray-600"><Building2 size={13} /> {r.card_number}</span>}
+                        {r.card_type && <span className="flex items-center gap-1 text-gray-600"><Building2 size={13} /> {r.card_type}</span>}
+                        {r.payee && <span className="flex items-center gap-1 text-gray-600"><User size={13} /> Payee: {r.payee}</span>}
+                        {r.address && <span className="flex items-center gap-1 text-gray-600 truncate max-w-[220px]" title={r.address}><FileText size={13} /> {r.address}</span>}
+                      </div>
+                      {r.payment_proofs && (
+                        <span className="text-xs text-gray-400 flex items-center gap-1">
+                          <ExternalLink size={10} /> Source: {r.payment_proofs.file_name}
+                        </span>
+                      )}
+                      <div className="text-[11px] text-gray-400">{r.created_at ? new Date(r.created_at).toLocaleString() : ""}</div>
+                    </div>
+                    <div className="shrink-0 flex gap-1">
+                      {(needsReview || filter === "review_needed") && (
+                        <button onClick={() => startEdit(r)} className="rounded-lg p-2 bg-orange-50 text-orange-600 hover:bg-orange-100 transition-colors" title="Review & Edit">
+                          <Edit3 size={16} />
+                        </button>
+                      )}
+                      {!needsReview && (
+                        <button onClick={() => startEdit(r)} className="rounded-lg p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 transition-colors" title="Edit">
+                          <Edit3 size={16} />
+                        </button>
+                      )}
+                    </div>
                   </div>
-                  <div className="text-xs text-gray-400">{r.created_at ? new Date(r.created_at).toLocaleString() : ""}</div>
-                </div>
-                <Link href={`/receipts/${r.id}`} className="text-blue-600 hover:text-blue-800 ml-3 shrink-0"><ExternalLink size={14} /></Link>
+                )}
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       }
     </div>
   );
+}
+
+function confidenceBadge(score: number | null) {
+  if (score == null) return null;
+  if (score >= 0.85) return <span className="inline-flex items-center gap-1 text-xs font-medium text-green-700 bg-green-50 rounded-full px-2 py-0.5 border border-green-200"><Shield size={11} /> {Math.round(score * 100)}%</span>;
+  if (score >= 0.5) return <span className="inline-flex items-center gap-1 text-xs font-medium text-yellow-700 bg-yellow-50 rounded-full px-2 py-0.5 border border-yellow-200"><AlertTriangle size={11} /> {Math.round(score * 100)}%</span>;
+  return <span className="inline-flex items-center gap-1 text-xs font-medium text-red-700 bg-red-50 rounded-full px-2 py-0.5 border border-red-200"><AlertCircle size={11} /> {Math.round(score * 100)}%</span>;
 }
