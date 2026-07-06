@@ -1,4 +1,4 @@
-import { useState, useRef, useMemo } from 'react'
+import { useState, useRef, useMemo, useEffect } from 'react'
 import { Plus, Trash2, Split } from 'lucide-react'
 import { useAccounts } from '../hooks/useAccounts'
 import { useJournalEntries } from '../hooks/useJournalEntries'
@@ -80,6 +80,13 @@ export function JournalEntryForm({ onClose, onSuccess, entry }: JournalEntryForm
         ]
   )
   const nextLineId = useRef(lines.length + 1)
+
+  useEffect(() => {
+    if (existingLines.length > 0) {
+      setLines(existingLines)
+      nextLineId.current = existingLines.length + 1
+    }
+  }, [existingLines])
 
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)

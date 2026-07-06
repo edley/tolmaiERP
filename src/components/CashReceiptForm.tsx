@@ -1,4 +1,4 @@
-import { useState, useRef, useMemo } from 'react'
+import { useState, useRef, useMemo, useEffect } from 'react'
 import { Plus, Trash2, Split } from 'lucide-react'
 import { useAccounts } from '../hooks/useAccounts'
 import { useReceipts } from '../hooks/useReceipts'
@@ -85,6 +85,13 @@ export function CashReceiptForm({ onClose, onSuccess, receipt }: CashReceiptForm
     existingLines.length > 0 ? existingLines : defaultLines
   )
   const nextLineId = useRef(lines.length + 1)
+
+  useEffect(() => {
+    if (existingLines.length > 0) {
+      setLines(existingLines)
+      nextLineId.current = existingLines.length + 1
+    }
+  }, [existingLines])
 
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
