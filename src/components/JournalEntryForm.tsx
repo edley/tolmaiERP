@@ -79,7 +79,7 @@ export function JournalEntryForm({ onClose, onSuccess, entry }: JournalEntryForm
           { id: 2, account_id: '', side: 'cr', amount: '', description: '', allocations: [] },
         ]
   )
-  const nextLineId = useRef(existingLines.length + 1 || 3)
+  const nextLineId = useRef(lines.length + 1)
 
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)

@@ -85,7 +85,7 @@ export function CashTransactionForm({ onClose, onSuccess, payment }: CashTransac
   const [lines, setLines] = useState<Line[]>(
     existingLines.length > 0 ? existingLines : defaultLines
   )
-  const nextLineId = useRef(existingLines.length + 1 || 4)
+  const nextLineId = useRef(lines.length + 1)
 
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
