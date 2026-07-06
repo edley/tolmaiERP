@@ -81,13 +81,13 @@ export function Payments() {
       )}
 
       <Modal open={showForm} onClose={() => { setShowForm(false); setEditingPayment(null) }} title={editingPayment ? 'Edit Payment' : 'New Payment'} size="full" companyName={currentCompany?.name}>
-        <CashTransactionForm payment={editingPayment ?? undefined} onClose={() => { setShowForm(false); setEditingPayment(null) }} onSuccess={refetch} />
+        <CashTransactionForm key={editingPayment?.id ?? 'new'} payment={editingPayment ?? undefined} onClose={() => { setShowForm(false); setEditingPayment(null) }} onSuccess={refetch} />
       </Modal>
 
       <Modal open={!!viewingPayment} onClose={() => setViewingPayment(null)} title={`Payment ${viewingPayment?.voucher_number ?? ''}`} size="full">
         {viewingPayment && (
           <div className="flex flex-col h-full gap-6">
-            <CashTransactionForm payment={viewingPayment} onClose={() => setViewingPayment(null)} onSuccess={refetch} />
+            <CashTransactionForm key={viewingPayment.id} payment={viewingPayment} onClose={() => setViewingPayment(null)} onSuccess={refetch} />
             <AuditTrail data={viewingPayment} />
             <AuditFieldChanges entries={getFieldAuditEntries('payment', viewingPayment.id)} />
           </div>

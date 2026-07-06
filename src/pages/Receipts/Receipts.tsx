@@ -81,13 +81,13 @@ export function Receipts() {
       )}
 
       <Modal open={showForm} onClose={() => { setShowForm(false); setEditingReceipt(null) }} title={editingReceipt ? 'Edit Receipt' : 'New Receipt'} size="full" companyName={currentCompany?.name}>
-        <CashReceiptForm receipt={editingReceipt ?? undefined} onClose={() => { setShowForm(false); setEditingReceipt(null) }} onSuccess={refetch} />
+        <CashReceiptForm key={editingReceipt?.id ?? 'new'} receipt={editingReceipt ?? undefined} onClose={() => { setShowForm(false); setEditingReceipt(null) }} onSuccess={refetch} />
       </Modal>
 
       <Modal open={!!viewingReceipt} onClose={() => setViewingReceipt(null)} title={`Receipt ${viewingReceipt?.voucher_number ?? ''}`} size="full">
         {viewingReceipt && (
           <div className="flex flex-col h-full gap-6">
-            <CashReceiptForm receipt={viewingReceipt} onClose={() => setViewingReceipt(null)} onSuccess={refetch} />
+            <CashReceiptForm key={viewingReceipt.id} receipt={viewingReceipt} onClose={() => setViewingReceipt(null)} onSuccess={refetch} />
             <AuditTrail data={viewingReceipt} />
             <AuditFieldChanges entries={getFieldAuditEntries('receipt', viewingReceipt.id)} />
           </div>

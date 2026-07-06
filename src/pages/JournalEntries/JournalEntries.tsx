@@ -117,11 +117,11 @@ export function JournalEntries() {
       </Modal>
 
       <Modal open={!!editingEntry} onClose={() => setEditingEntry(null)} title={`Edit — ${editingEntry?.entry_number ?? ''}`} size="full" companyName={currentCompany?.name}>
-        {editingEntry && <JournalEntryForm entry={editingEntry} onClose={() => setEditingEntry(null)} onSuccess={refetch} />}
+        {editingEntry && <JournalEntryForm key={editingEntry.id} entry={editingEntry} onClose={() => setEditingEntry(null)} onSuccess={refetch} />}
       </Modal>
 
       <Modal open={!!viewingEntry} onClose={() => setViewingEntry(null)} title={`${viewingEntry?.entry_number ?? ''}`} size="full">
-        {viewingEntry && <JournalEntryForm entry={viewingEntry} onClose={() => setViewingEntry(null)} />}
+        {viewingEntry && <JournalEntryForm key={viewingEntry.id} entry={viewingEntry} onClose={() => setViewingEntry(null)} />}
       </Modal>
 
       <Modal open={!!auditEntry} onClose={() => setAuditEntry(null)} title={`Audit Trail — ${auditEntry?.entry_number ?? ''}`} size="md">
